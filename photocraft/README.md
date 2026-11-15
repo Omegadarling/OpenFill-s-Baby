@@ -1,8 +1,8 @@
-# OpenFill for PhotoCraft
+# OpenFill's Baby for PhotoCraft
 
 Select, edit, and remove objects in [PhotoCraft](https://github.com/storytold/photocraft), using [ComfyUI](https://github.com/comfyanonymous/ComfyUI).
 
-**[Download the latest PhotoCraft installer](https://github.com/Omegadarling/openfill/releases/latest).** Choose the `openfill-photocraft-*.zip` asset and follow the instructions below for your platform.
+**[Download the latest PhotoCraft installer](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest).** Choose the `openfill-photocraft-*.zip` asset and follow the instructions below for your platform.
 
 The standard tools share the engine from [upstream OpenFill](https://github.com/beckettharriman/openfill). This fork adds WeVisOne-VL object selection, reference-guided editing with MiniMax H3 Image, Qwen Image 2.1 and FIBO 2.0, prompt-free removal with automatic method choice, saved ComfyUI servers, and a rearrangeable panel with variation review.
 
@@ -102,7 +102,7 @@ Qwen 2.1 uses `qwen3vl_8b_fp8_scaled.safetensors` in `models/text_encoders` and 
 
 The Qwen Image 2.1 release provides the full BF16 model and VAE. The encoder comes from the Comfy-Org Qwen3-VL release. ComfyUI needs the native `TextEncodeQwenImage21` and `QwenImage21Cache` nodes. [Model files](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) · [Encoder files](https://huggingface.co/Comfy-Org/Qwen3-VL) · [ComfyUI guide](https://docs.comfy.org/tutorials/image/qwen/qwen-image-2-1)
 
-For Lightning v2 RL, download the pinned full FP32 transformer and convert it with the optional conversion script from the source repository. Run the script with a Python environment that has NumPy, such as the ComfyUI virtual environment. [LightX2V model and license](https://huggingface.co/lightx2v/Qwen-Image-2.1-Lightning-v2-RL/tree/682b2529ffb5ae9ba39ceb81a31ce99e602da2ee) · [Conversion script](https://github.com/Omegadarling/openfill/blob/main/tools/convert_qwen21_lightning.py)
+For Lightning v2 RL, download the pinned full FP32 transformer and convert it with the optional conversion script from the source repository. Run the script with a Python environment that has NumPy, such as the ComfyUI virtual environment. [LightX2V model and license](https://huggingface.co/lightx2v/Qwen-Image-2.1-Lightning-v2-RL/tree/682b2529ffb5ae9ba39ceb81a31ce99e602da2ee) · [Conversion script](https://github.com/Omegadarling/OpenFill-s-Baby/blob/main/tools/convert_qwen21_lightning.py)
 
 ```text
 python tools/convert_qwen21_lightning.py diffusion_pytorch_model.safetensors qwen_image_2.1_lightning_v2_rl_bf16.safetensors
@@ -118,7 +118,7 @@ In **Generation**, choose **Surrounding area** to give FIBO an adjustable crop a
 
 ### SDXL
 
-For SDXL out of the box, use the [managed engine](#managed-engine-models). Edit on an existing ComfyUI also supports verified full SDXL checkpoints with 4-channel base or 9-channel inpainting architectures. The public build’s registry starts empty. To add a checkpoint in a custom build, audit the SafeTensors header, verify the sampling workflow, and register the exact ComfyUI loader path and source ID. For the public loopback connection, including a LAN tunnel, the source ID is `local`. SDXL uses prompt and selection editing. Reference attachments are available with Qwen 2.1 and FIBO 2.0. [Registry](https://github.com/Omegadarling/openfill/blob/main/gimp-openfill/openfill/verified_sdxl.json) · [Registry format and validation](https://github.com/Omegadarling/openfill/blob/main/gimp-openfill/openfill/remote_sdxl.py)
+For SDXL out of the box, use the [managed engine](#managed-engine-models). Edit on an existing ComfyUI also supports verified full SDXL checkpoints with 4-channel base or 9-channel inpainting architectures. The public build’s registry starts empty. To add a checkpoint in a custom build, audit the SafeTensors header, verify the sampling workflow, and register the exact ComfyUI loader path and source ID. For the public loopback connection, including a LAN tunnel, the source ID is `local`. SDXL uses prompt and selection editing. Reference attachments are available with Qwen 2.1 and FIBO 2.0. [Registry](https://github.com/Omegadarling/OpenFill-s-Baby/blob/main/gimp-openfill/openfill/verified_sdxl.json) · [Registry format and validation](https://github.com/Omegadarling/OpenFill-s-Baby/blob/main/gimp-openfill/openfill/remote_sdxl.py)
 
 ### Reference images and panel layout
 
@@ -147,7 +147,7 @@ Current browser panel replaying a saved Qwen Lightning edit. [Demo inputs from L
 
 1. Install PhotoCraft (the `.msi`).
 2. If you already have ComfyUI, you can use its Python without installing another one; see [using ComfyUI's Python](#use-comfyuis-python). Otherwise, install Python from [python.org](https://www.python.org/downloads/windows/).
-3. Unzip the [fork installer](https://github.com/Omegadarling/openfill/releases/latest) and double-click **Install OpenFill for PhotoCraft.cmd**. It adds **PhotoCraft with OpenFill** to the Start menu and the desktop.
+3. Unzip the [fork installer](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest) and double-click **Install OpenFill for PhotoCraft.cmd**. It adds **PhotoCraft with OpenFill** to the Start menu and the desktop.
 4. Open **PhotoCraft with OpenFill**. PhotoCraft opens with the OpenFill panel next to it.
 5. For the managed engine, the panel asks for what's missing:
    - **AI engine not found**: press **Download ComfyUI**. It downloads and unpacks in the background (a few minutes) into `%LOCALAPPDATA%\OpenFill\ComfyUI`. With an AMD card it gets ComfyUI's version for AMD cards. If you already have ComfyUI, press **Choose folder** instead and pick the folder that has `main.py` in it (or the portable folder).
@@ -189,7 +189,7 @@ The launcher looks for PhotoCraft each time it starts, rather than storing a ver
 
 ## Install on Linux
 
-1. Unzip the [fork installer](https://github.com/Omegadarling/openfill/releases/latest) and run `sh install.sh` in the unzipped folder.
+1. Unzip the [fork installer](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest) and run `sh install.sh` in the unzipped folder.
    - No PhotoCraft yet? The installer offers to download it for you (the official Linux build, SHA-256 checked, no admin rights).
 2. Open PhotoCraft the usual way: from the app menu, or by opening an image in the file manager. OpenFill comes with it.
 3. For the managed engine, choose your ComfyUI folder or follow ComfyUI's [manual install](https://github.com/comfyanonymous/ComfyUI#manual-install-windows-linux), then use **Open model manager** to install models. [AMD on Linux](https://github.com/beckettharriman/openfill/blob/main/docs/install.md#amd-on-linux)
@@ -205,7 +205,7 @@ The upstream installer was tested with PhotoCraft 0.16.0 on an M3 MacBook Air. [
 1. Install PhotoCraft from its [macOS DMG](https://github.com/storytold/photocraft/releases) in `/Applications` or `~/Applications`.
 2. Install Python 3.10 or newer from [python.org](https://www.python.org/downloads/macos/), which includes Tk, then run `python3 -m pip install Pillow`. You can instead use your existing ComfyUI Python with Pillow; Tk is optional. See [using ComfyUI's Python](#use-comfyuis-python).
 3. Set up ComfyUI using the [Mac engine steps](https://github.com/beckettharriman/openfill/blob/main/docs/install.md#macos), or use your existing ComfyUI and models.
-4. Unzip the [fork installer](https://github.com/Omegadarling/openfill/releases/latest) and run `sh install.sh` from the unzipped folder.
+4. Unzip the [fork installer](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest) and run `sh install.sh` from the unzipped folder.
 5. Open `~/Applications/PhotoCraft with OpenFill.app`. For the managed engine, use **Engine** to choose your ComfyUI folder and **Manage Models** to install models such as LaMa and DreamShaper 8.
 
 The panel floats independently; following PhotoCraft when it moves or minimizes is Windows-only. To remove OpenFill, open `~/Applications/Uninstall OpenFill for PhotoCraft.app`, or run `sh install.sh --uninstall`. PhotoCraft, settings and models stay.

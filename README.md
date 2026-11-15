@@ -1,12 +1,12 @@
 <div align="center">
 
-# OpenFill for PhotoCraft
+# OpenFill's Baby
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE) ![Python + ComfyUI](https://img.shields.io/badge/made%20with-Python%20%2B%20ComfyUI-orange.svg)
 
 *Select objects, edit with references, remove distractions, expand the canvas, and create images with ComfyUI.*
 
-**[Download OpenFill for PhotoCraft](https://github.com/Omegadarling/openfill/releases/latest)** · [Setup and model guide](photocraft/README.md)
+**[Download OpenFill's Baby](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest)** · [Setup and model guide](photocraft/README.md)
 
 <table>
 <tr><th>Select</th><th>Remove</th></tr>
@@ -21,7 +21,7 @@
 
 </div>
 
-This fork extends [Beckett Harriman’s OpenFill](https://github.com/beckettharriman/openfill) for PhotoCraft. The original GIMP plug-in and its installation instructions are available upstream.
+**OpenFill's Baby** extends [Beckett Harriman’s OpenFill](https://github.com/beckettharriman/openfill) for PhotoCraft. The original GIMP plug-in and its installation instructions are available upstream.
 
 ## What this fork adds
 
@@ -82,7 +82,7 @@ Start ComfyUI on the server, then open **Engine → Find servers** in PhotoCraft
 Install on Windows 10 or 11, Linux, or Apple Silicon macOS. For the standard tools, 8 GB of graphics memory covers many SDXL and FLUX configurations, and LaMa and SD 1.5 can use less. H3, Qwen 2.1 and FIBO require a compatible ComfyUI server and more memory. AI selection needs the optional WeVisOne-VL weights on its server. On Windows, the managed engine can download ComfyUI for NVIDIA or AMD cards. [Platform instructions](photocraft/README.md#what-you-need)
 
 1. Install PhotoCraft. You can [reuse ComfyUI's Python](photocraft/README.md#use-comfyuis-python), or install Python from [python.org](https://www.python.org/downloads/) if you need it.
-2. Download the `openfill-photocraft-*.zip` installer from the [fork’s latest release](https://github.com/Omegadarling/openfill/releases/latest). Unzip it and run **Install OpenFill for PhotoCraft.cmd** on Windows or `sh install.sh` on Linux or macOS.
+2. Download the `openfill-photocraft-*.zip` installer from the [fork’s latest release](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest). Unzip it and run **Install OpenFill for PhotoCraft.cmd** on Windows or `sh install.sh` on Linux or macOS.
 3. Open **PhotoCraft with OpenFill**. For the standard tools, set up the managed engine and use **Manage Models** to install models. For H3, Qwen 2.1 or FIBO 2.0, follow the [existing ComfyUI setup](photocraft/README.md#edit-with-an-existing-comfyui). For AI selection, follow the [WeVisOne-VL setup](photocraft/README.md#select-an-object).
 
 ## Models

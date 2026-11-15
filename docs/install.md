@@ -14,7 +14,7 @@ Use **Manage Models** in the PhotoCraft panel to get models and see what fits yo
 
 ## OpenFill for PhotoCraft
 
-Download the `openfill-photocraft-*.zip` asset from [this fork’s latest release](https://github.com/Omegadarling/openfill/releases/latest). The ZIP contains the installers below. For model setup and the fork’s features, see [OpenFill for PhotoCraft](../photocraft/README.md).
+Download the `openfill-photocraft-*.zip` asset from [this fork’s latest release](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest). The ZIP contains the installers below. For model setup and the fork’s features, see [OpenFill for PhotoCraft](../photocraft/README.md).
 
 ### Windows
 
@@ -117,7 +117,7 @@ GIMP's own Python can only be started by GIMP on macOS, so OpenFill runs its bac
 
 ### PhotoCraft on macOS
 
-Upstream tested its PhotoCraft companion on a MacBook Air M3 with 16 GB RAM, macOS 14.7, and PhotoCraft 0.16.0. Download and unzip the [fork’s PhotoCraft release](https://github.com/Omegadarling/openfill/releases/latest).
+Upstream tested its PhotoCraft companion on a MacBook Air M3 with 16 GB RAM, macOS 14.7, and PhotoCraft 0.16.0. Download and unzip the [fork’s PhotoCraft release](https://github.com/Omegadarling/OpenFill-s-Baby/releases/latest).
 
 1. Get the macOS DMG from [PhotoCraft releases](https://github.com/storytold/photocraft/releases) and copy PhotoCraft to `/Applications` or `~/Applications`.
 2. Install Python 3.10 or newer from [python.org](https://www.python.org/downloads/macos/), which includes Tk. Run `python3 -m pip install Pillow`. You can instead use your existing ComfyUI Python with Pillow; Tk is optional. See [using ComfyUI's Python](#use-comfyuis-python).
