@@ -4,7 +4,19 @@ Select, edit, and remove objects in [PhotoCraft](https://github.com/storytold/ph
 
 **[Download the latest PhotoCraft installer](https://github.com/Omegadarling/openfill/releases/latest).** Choose the `openfill-photocraft-*.zip` asset and follow the instructions below for your platform.
 
-The standard tools share the engine from [upstream OpenFill](https://github.com/beckettharriman/openfill). This fork adds reference-guided editing with MiniMax H3 Image, Qwen Image 2.1 and FIBO 2.0, a single rearrangeable settings panel, and the ability to add to a set of pending variations.
+The standard tools share the engine from [upstream OpenFill](https://github.com/beckettharriman/openfill). This fork adds WeVisOne-VL object selection, reference-guided editing with MiniMax H3 Image, Qwen Image 2.1 and FIBO 2.0, prompt-free removal with automatic method choice, saved ComfyUI servers, and a rearrangeable panel with variation review.
+
+## Current interface (0.20.3)
+
+<table>
+<tr><th>Select</th><th>Remove</th></tr>
+<tr>
+<td valign="top"><a href="../docs/screenshots/photocraft-select-0.20.3.png"><img src="../docs/screenshots/photocraft-select-0.20.3.png" width="340" alt="Select by click, box or description, with Add/Subtract, selection overlay and exact Grow controls."></a></td>
+<td valign="top"><a href="../docs/screenshots/photocraft-remove-0.20.3.png"><img src="../docs/screenshots/photocraft-remove-0.20.3.png" width="340" alt="Remove with Automatic choosing MiniMax H3 Image, manual method choice and one to five variations."></a></td>
+</tr>
+</table>
+
+Captured from the 0.20.3 browser UI on November 15, 2026 with saved example data. The native panel offers the same tools. [Edit and engine screenshots](../README.md#edit-with-references-and-choose-where-it-runs) · [Capture details and credits](../docs/screenshots/README.md#photocraft-0203)
 
 ## Select an object
 
@@ -118,9 +130,9 @@ Changes in **Generation** apply when you click **Generate** or press Enter in th
 
 **Auto-feather selection** in **Generation** softens the layer mask inward, so the transition blends into the original along the selection edge. Adjust **Auto-feather area (%)** to control the amount. Pixels outside the selection stay untouched.
 
-<img src="https://raw.githubusercontent.com/Omegadarling/openfill/main/docs/screenshots/photocraft-demo.gif" width="720" alt="The OpenFill fork shows a reference-guided teapot edit, result review controls, and model visibility settings in its rearrangeable panel.">
+<img src="../docs/screenshots/photocraft-edit-0.20.3.png" width="420" alt="OpenFill 0.20.3 Edit with a labeled teapot reference, saved Qwen Lightning result, and Keep, Keep all and Discard controls.">
 
-Screenshot walkthrough with a saved Qwen Lightning edit. [Demo inputs from LightX2V](https://huggingface.co/lightx2v/Qwen-Image-2.1-Lightning-v2-RL#multi-reference-generation-1)
+Current browser panel replaying a saved Qwen Lightning edit. [Demo inputs from LightX2V](https://huggingface.co/lightx2v/Qwen-Image-2.1-Lightning-v2-RL#multi-reference-generation-1)
 
 ## What you need
 

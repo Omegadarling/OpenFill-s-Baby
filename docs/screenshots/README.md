@@ -1,5 +1,32 @@
 # Screenshots
 
+## PhotoCraft 0.20.3
+
+Captured on November 15, 2026 from the unchanged 0.20.3 browser panel
+(`photocraft/openfill_photocraft/static/index.html`). These are browser screenshots
+at a 480 CSS-pixel panel width and 2× resolution. Open an image for readable controls.
+
+| File | Shows |
+| --- | --- |
+| `photocraft-select-0.20.3.png` | Click/box/description selection, Replace/Add/Subtract, Show selection overlay, and Grow with a slider and numeric pixel field. The visible description is an example, not a newly submitted selection. |
+| `photocraft-edit-0.20.3.png` | A reference prompt, attachment labels, and the saved Qwen Lightning result with Keep, Keep all and Discard. |
+| `photocraft-remove-0.20.3.png` | Kind of removal → Automatic, MiniMax H3 Image as Method, and 1–5 variations. This shows configuration, not a new removal result. |
+| `photocraft-engine-0.20.3.png` | Find servers, Add server and Multi-engine with separate Select/Edit/Remove assignments. Server names and addresses are portable examples. |
+
+The current HTML and JavaScript run against an isolated loopback fixture server.
+Document metadata, model inventory, references, jobs and engine settings are example
+or saved data. No editor session, server discovery, model download or GPU generation
+ran during these captures. The Edit thumbnail replays an actual saved Qwen Lightning
+edit, also shown in the earlier GIF. The coffee preview is from the existing selection
+test fixture; it does not display a selection matte.
+
+Image sources: the [scikit-image coffee example](https://scikit-image.org/docs/stable/api/skimage.data.html#skimage.data.coffee),
+and [LightX2V's Qwen Lightning multi-reference demo inputs](https://huggingface.co/lightx2v/Qwen-Image-2.1-Lightning-v2-RL#multi-reference-generation-1).
+The walkthrough GIF `photocraft-demo.gif` predates these screenshots; its panel layout
+is retained as an example of the reference-edit workflow.
+
+## Original GIMP captures
+
 Captured in GIMP 3.2.6 on Windows 11 with an isolated profile by
 `tests/gimp_batch_ui_screenshots.py`. No generation, backend check or download
 ran for them: the progress window and the variations picker are driven by
