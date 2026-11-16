@@ -1031,6 +1031,12 @@ def build_h3_image_edit(
 
 MOSS_ANYPAINT_AREA = 1024 * 1024
 MOSS_ANYPAINT_STEPS = 8
+# AnyPaint is prompted with the finished picture. "Continue the background" let it invent a
+# subject on a smooth gradient; describing an empty, evenly continued scene did not.
+MOSS_ANYPAINT_REMOVAL_PROMPT = (
+    "an empty scene with nothing in front of the background; the same surface, texture, color, "
+    "gradient and lighting continue evenly across the whole picture; no object, person, face, animal, text or logo"
+)
 
 
 def moss_anypaint_size(width: int, height: int) -> tuple[int, int]:

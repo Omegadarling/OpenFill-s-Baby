@@ -72,7 +72,9 @@ def _discover_moss_anypaint(client: ComfyClient, source_label: str) -> list[Mode
             id=MOSS_ANYPAINT_ID,
             name=f"MOSS AnyPaint · {source_label}",
             tier="edit",
-            capabilities=("fill", "edit"),
+            # Remove works without a locator: AnyPaint's reference fills the hole with
+            # surrounding color, so the model never sees the object it replaces.
+            capabilities=("fill", "edit", "remove"),
             arch="moss_image",
             template=MOSS_ANYPAINT_TEMPLATE,
             page="https://huggingface.co/yijunwang2/moss-anypaint",

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Edit can use **MOSS AnyPaint** (MOSS-Image Base with the AnyPaint adapter) on an existing ComfyUI server that has the moss-anypaint nodes and model files. Describe the finished picture; OpenFill repaints the selection in eight steps and keeps everything outside it unchanged. It accepts no reference attachments and appears only on servers that offer every required node and file.
+- MOSS AnyPaint is also a manual method in **Remove**. It repaints the selection from a description of an empty background and never sees the object being removed. **Automatic** still prefers MiniMax H3 Image.
 
 ## [0.20.3] - 2026-11-12
 

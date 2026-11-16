@@ -42,11 +42,11 @@ def role(entry, name):
 
 
 class DiscoveryTests(unittest.TestCase):
-    def test_published_int8_recipe_is_offered_for_edit_only(self):
+    def test_published_int8_recipe_is_offered_for_edit_and_remove(self):
         (entry,) = remote_models._discover_moss_anypaint(client(), "host")
         self.assertEqual(entry.id, remote_models.MOSS_ANYPAINT_ID)
         self.assertEqual(entry.template, MOSS_ANYPAINT_TEMPLATE)
-        self.assertEqual(entry.capabilities, ("fill", "edit"))
+        self.assertEqual(entry.capabilities, ("fill", "edit", "remove"))
         self.assertEqual(role(entry, "unet"), "diffusion_models/moss/moss_image_base_int8_convrot.safetensors")
         self.assertEqual(role(entry, "lora"), "loras/moss/moss_anypaint_rank32.safetensors")
         self.assertEqual(role(entry, "lora2"), "loras/moss/lora_dmd2.safetensors")

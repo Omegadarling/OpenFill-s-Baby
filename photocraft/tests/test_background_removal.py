@@ -17,6 +17,7 @@ from openfill import workflow  # noqa: E402
 from openfill.app import App  # noqa: E402
 from openfill.backend import (  # noqa: E402
     H3_IMAGE_EDIT_TEMPLATE,
+    MOSS_ANYPAINT_TEMPLATE,
     QWEN21_EDIT_TEMPLATE,
     QWEN21_LIGHTNING_FILE,
     BackendError,
@@ -135,6 +136,35 @@ class BackgroundRemovalTests(unittest.TestCase):
         self.assertEqual(graph["selection_composite"]["inputs"]["mask"], ["selection_support", 0])
         with self.assertRaisesRegex(ValueError, "prepared background"):
             workflow.build_h3_image_edit(req, "original.png", "mask.png", 25, workflow.Capabilities())
+
+    def test_moss_anypaint_removal_repaints_from_original_pixels_with_a_background_description(self):
+        model = ModelSpec(
+            arch="moss_image",
+            template=MOSS_ANYPAINT_TEMPLATE,
+            unet="base",
+            clip1="encoder",
+            vae="vae",
+            lora="anypaint",
+            lora2="dmd2",
+        )
+        self.app.resolve_model.return_value = (self.entry, model)
+        self.app.generative_fill(object(), "", "", 2, 1, 25, "chosen", remove=True, as_picked=True)
+        req = self.app.backend.return_value.inpaint.call_args.args[0]
+        # AnyPaint's reference hides the hole, so no locator or clean plate is needed.
+        self.app.io.removal_guide.assert_not_called()
+        self.app.io.removal_locator.assert_not_called()
+        self.app.io.blend_removal_results.assert_not_called()
+        self.assertEqual((req.image_png, req.reference_images, req.grow, req.feather), (b"original PNG", (), 0, 0))
+        self.assertEqual(req.prompt, workflow.MOSS_ANYPAINT_REMOVAL_PROMPT)
+        self.assertIn("no object", req.prompt)
+        self.assertEqual((req.sampling.steps, req.sampling.denoise, req.sampling.batch), (8, 1.0, 2))
+        self.assertEqual(self.app.io.insert_results.call_args.kwargs["mask_pixels"], self.alpha)
+        self.assertEqual(self.app.io.insert_results.call_args.args[4], 0.0)
+        graph = workflow.build_fill(req, "original.png", "mask.png", 25, workflow.Capabilities())
+        self.assertEqual(graph["prepare"]["inputs"]["generated_mask"], ["generated_mask", 0])
+        self.assertEqual(graph["support_image"]["inputs"]["mask"], ["selection_support", 0])
+        self.assertEqual(graph["selection_composite"]["inputs"]["mask"], ["selection_support", 0])
+        self.assertEqual([graph[n]["inputs"]["seed"] for n in ("sampler", "sampler_2")], [25, 26])
 
     def test_h3_cancels_before_submission_if_the_background_cannot_be_prepared(self):
         model = ModelSpec(arch="h3_image", template=H3_IMAGE_EDIT_TEMPLATE, unet="unet", clip1="clip", vae="vae")

@@ -526,6 +526,7 @@ class App:
                             "sdxl_eraser": "RORem (SDXL removal)",
                             QWEN21_EDIT_TEMPLATE: "Qwen Image 2.1 Lightning",
                             H3_IMAGE_EDIT_TEMPLATE: "MiniMax H3 Image",
+                            MOSS_ANYPAINT_TEMPLATE: "MOSS AnyPaint",
                         }.get(e.template, "")
                         if self.settings.remote_fibo and "remove" in e.capabilities
                         else ""
@@ -935,13 +936,21 @@ class App:
         rebuild_background = remote_removal and fibo_edit
         qwen_removal = remote_removal and model.qwen21_lightning
         h3_removal = remote_removal and model.effective_template == H3_IMAGE_EDIT_TEMPLATE
+        moss_removal = remote_removal and model.effective_template == MOSS_ANYPAINT_TEMPLATE
         if remote_removal and entry is not None and entry.id in self.settings.hidden_models:
             raise BackendError("This removal model is hidden. Choose a visible method.")
         if remote_removal and (
             entry is None
             or "remove" not in entry.capabilities
             or model.effective_template
-            not in ("fibo2_edit", "lama_rmbg", "sdxl_eraser", QWEN21_EDIT_TEMPLATE, H3_IMAGE_EDIT_TEMPLATE)
+            not in (
+                "fibo2_edit",
+                "lama_rmbg",
+                "sdxl_eraser",
+                QWEN21_EDIT_TEMPLATE,
+                H3_IMAGE_EDIT_TEMPLATE,
+                MOSS_ANYPAINT_TEMPLATE,
+            )
         ):
             raise BackendError("Choose an available removal model in Remove.")
         if self.settings.remote_fibo and not remove and entry is not None and "fill" not in entry.capabilities:
@@ -1049,6 +1058,8 @@ class App:
                 "surface detail. Smooth out repair seams without adding objects or patterns."
             )
             negative = ""
+        elif moss_removal:
+            prompt, negative = workflow.MOSS_ANYPAINT_REMOVAL_PROMPT, ""
         elif qwen_removal:
             prompt = (
                 "Edit the first photograph. The second photograph marks the unwanted foreground object with translucent red paint. "
