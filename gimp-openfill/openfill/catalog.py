@@ -856,6 +856,7 @@ def model_spec_for(entry: ModelEntry, catalog: Iterable[ModelEntry] = (), models
     spec.vae = names.get("vae", "")
     spec.inpaint_model = names.get("inpaint_model", "")
     spec.lora = names.get("lora", "")
+    spec.lora2 = names.get("lora2", "")
     if entry.template == "flux_eraser":
         # The LoRA runs on the FLUX.1 Fill entry it requires: its UNet, text encoders and VAE.
         catalog = list(catalog)

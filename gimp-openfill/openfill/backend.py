@@ -22,6 +22,9 @@ QWEN21_EDIT_TEMPLATE = "qwen21_edit"
 QWEN21_FULL_FILE = "qwen_image_2.1_bf16.safetensors"
 QWEN21_LIGHTNING_FILE = "qwen_image_2.1_lightning_v2_rl_bf16.safetensors"
 H3_IMAGE_EDIT_TEMPLATE = "h3_image_edit"
+# MOSS-Image Base with the AnyPaint arbitrary-mask adapter. Its only reference is
+# the masked canvas itself, so it accepts no attachments.
+MOSS_ANYPAINT_TEMPLATE = "moss_anypaint"
 EDIT_REFERENCE_OPTIONS = {
     QWEN21_EDIT_TEMPLATE: (15, "<imageN>"),
     "fibo2_edit": (15, "<image_N>"),
@@ -106,6 +109,7 @@ class ModelSpec:
     vae: str = ""  # separate VAE file
     inpaint_model: str = ""  # LaMa / MAT file for prompt-free removal
     lora: str = ""  # LoRA applied to the diffusion model (the FLUX Fill object-removal LoRA)
+    lora2: str = ""  # second LoRA after ``lora`` (MOSS AnyPaint's 8-step DMD2 adapter)
 
     @property
     def uses_fooocus(self) -> bool:

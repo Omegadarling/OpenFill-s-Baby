@@ -22,6 +22,7 @@ from functools import lru_cache
 
 from .backend import (
     H3_IMAGE_EDIT_TEMPLATE,
+    MOSS_ANYPAINT_TEMPLATE,
     QWEN21_EDIT_TEMPLATE,
     InpaintRequest,
     ModelSpec,
@@ -1028,8 +1029,147 @@ def build_h3_image_edit(
     return g.to_dict()
 
 
+MOSS_ANYPAINT_AREA = 1024 * 1024
+MOSS_ANYPAINT_STEPS = 8
+
+
+def moss_anypaint_size(width: int, height: int) -> tuple[int, int]:
+    """About 1 MP in multiples of 16, the canvas size of AnyPaint's published results."""
+    if min(width, height) < 1:
+        raise ValueError("MOSS AnyPaint needs positive image dimensions")
+    ratio = width / height
+    if ratio > 16 or ratio < 1 / 16:
+        raise ValueError("MOSS AnyPaint cannot preserve an aspect ratio wider than 16:1")
+    return (
+        max(64, round(math.sqrt(MOSS_ANYPAINT_AREA * ratio) / 16) * 16),
+        max(64, round(math.sqrt(MOSS_ANYPAINT_AREA / ratio) / 16) * 16),
+    )
+
+
+def build_moss_anypaint_edit(
+    req: InpaintRequest,
+    image_ref: str,
+    mask_ref: str,
+    seed: int,
+    caps: Capabilities,
+    filename_prefix: str = "openfill/moss-anypaint",
+    *,
+    reference_refs: tuple[str, ...] = (),
+) -> dict:
+    """MOSS-Image Base + AnyPaint: regenerate the selection from a description of the result.
+
+    The selection's hard support is AnyPaint's generated mask. Its Prepare node builds
+    the 384 px semantic reference and keep mask; KSampler then replaces the known
+    tokens at every step. The original crop is composited back through the same
+    support and PhotoCraft applies the captured soft edge once.
+    """
+    if reference_refs:
+        validate_edit_references(MOSS_ANYPAINT_TEMPLATE, len(reference_refs))
+    if req.mode != "fill" or not req.prompt.strip():
+        raise ValueError("Describe the finished image for MOSS AnyPaint")
+    spec = req.model
+    if not all((spec.unet, spec.clip1, spec.vae, spec.lora, spec.lora2)):
+        raise ValueError("MOSS AnyPaint needs MOSS-Image Base, its Qwen3.5 encoder, VAE, AnyPaint and DMD2 adapters")
+    width, height = moss_anypaint_size(req.width, req.height)
+    aligned = replace(req, work_width=width, work_height=height, color_match=0.0)
+    g = Graph()
+    g.add("unet", "UNETLoader", unet_name=spec.unet, weight_dtype="default")
+    g.add("anypaint_lora", "LoraLoaderModelOnly", model=g.out("unet"), lora_name=spec.lora, strength_model=1.0)
+    g.add("dmd2_lora", "LoraLoaderModelOnly", model=g.out("anypaint_lora"), lora_name=spec.lora2, strength_model=1.0)
+    g.add("anypaint_patch", "MOSSAnyPaintModelPatch", model=g.out("dmd2_lora"), kv_cache=True)
+    g.add("clip", "CLIPLoader", clip_name=spec.clip1, type="moss_image", device="default")
+    g.add("vae", "VAELoader", vae_name=spec.vae)
+    g.add("load_image", "LoadImage", image=image_ref)
+    g.add("load_mask", "LoadImage", image=mask_ref)
+    g.add("selection_mask", "ImageToMask", image=g.out("load_mask"), channel="red")
+    g.add("selection_support", "ThresholdMask", mask=g.out("selection_mask"), value=0.0)
+    source = _scale_image(g, "image_scale", g.out("load_image"), width, height)
+    # Bilinear never overshoots, so the scaled support only gains its edge pixels.
+    g.add("support_image", "MaskToImage", mask=g.out("selection_support"))
+    g.add(
+        "support_scale",
+        "ImageScale",
+        image=g.out("support_image"),
+        upscale_method="bilinear",
+        width=width,
+        height=height,
+        crop="disabled",
+    )
+    g.add("support_work", "ImageToMask", image=g.out("support_scale"), channel="red")
+    g.add("generated_mask", "ThresholdMask", mask=g.out("support_work"), value=0.0)
+    g.add(
+        "prepare",
+        "MOSSAnyPaintPrepare",
+        source=source,
+        generated_mask=g.out("generated_mask"),
+        left=0,
+        top=0,
+        right=0,
+        bottom=0,
+        reference_max_edge=384,
+        boundary_redraw_px=32,
+    )
+    g.add(
+        "encode",
+        "MOSSAnyPaintEncode",
+        clip=g.out("clip"),
+        prompt=req.prompt,
+        vae=g.out("vae"),
+        semantic_reference=g.out("prepare", 0),
+        known_image=g.out("prepare", 1),
+        keep_mask=g.out("prepare", 3),
+    )
+    # CFG 1 never evaluates the negative branch.
+    g.add("negative", "ConditioningZeroOut", conditioning=g.out("encode", 0))
+    sampler_inputs = dict(
+        model=g.out("anypaint_patch"),
+        positive=g.out("encode", 0),
+        negative=g.out("negative"),
+        latent_image=g.out("encode", 1),
+        steps=MOSS_ANYPAINT_STEPS,
+        cfg=1.0,
+        sampler_name="euler",
+        scheduler="simple",
+        denoise=1.0,
+    )
+    g.add("sampler", "KSampler", seed=int(seed), **sampler_inputs)
+    samples = g.out("sampler")
+    batch = max(1, int(req.sampling.batch))
+    # One sampler per seed keeps every variation on the single-image path the
+    # adapter was published with, and each seed reproducible on its own.
+    for index in range(1, batch):
+        variation = g.add(f"sampler_{index + 1}", "KSampler", seed=(int(seed) + index) % (1 << 64), **sampler_inputs)
+        joined = g.add(f"latents_{index + 1}", "LatentBatch", samples1=samples, samples2=g.out(variation))
+        samples = g.out(joined)
+    g.add("decode", "VAEDecode", samples=samples, vae=g.out("vae"))
+    _finish(g, aligned, g.out("decode"), g.out("selection_support"), caps, filename_prefix)
+    generated = g.nodes[OUTPUT_NODE]["inputs"]["images"]
+    destination = g.out("load_image")
+    if batch > 1:
+        g.add("source_batch", "RepeatImageBatch", image=destination, amount=batch)
+        destination = g.out("source_batch")
+    g.add(
+        "selection_composite",
+        "ImageCompositeMasked",
+        destination=destination,
+        source=generated,
+        x=0,
+        y=0,
+        resize_source=False,
+        mask=g.out("selection_support"),
+    )
+    g.nodes[OUTPUT_NODE]["inputs"]["images"] = g.out("selection_composite")
+    return g.to_dict()
+
+
 SDXL_EDIT_TEMPLATES = ("sdxl_edit", "sdxl_inpaint_edit")
-SELECTION_EDIT_TEMPLATES = ("fibo2_edit", QWEN21_EDIT_TEMPLATE, H3_IMAGE_EDIT_TEMPLATE, *SDXL_EDIT_TEMPLATES)
+SELECTION_EDIT_TEMPLATES = (
+    "fibo2_edit",
+    QWEN21_EDIT_TEMPLATE,
+    H3_IMAGE_EDIT_TEMPLATE,
+    MOSS_ANYPAINT_TEMPLATE,
+    *SDXL_EDIT_TEMPLATES,
+)
 
 
 def build_sdxl_edit(
@@ -1571,6 +1711,7 @@ BUILDERS = {
     "qwen_edit": build_qwen_edit,
     QWEN21_EDIT_TEMPLATE: build_qwen21_edit,
     H3_IMAGE_EDIT_TEMPLATE: build_h3_image_edit,
+    MOSS_ANYPAINT_TEMPLATE: build_moss_anypaint_edit,
     "sdxl_edit": build_sdxl_edit,
     "sdxl_inpaint_edit": build_sdxl_edit,
     "fibo2_edit": build_fibo2_edit,

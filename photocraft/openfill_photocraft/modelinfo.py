@@ -42,6 +42,8 @@ def model_detail(row: dict[str, Any], needed_by: str = "") -> str:
 
     if row.get("template") == "h3_image_edit":
         return "Six steps · instruction editing · selected area or whole image"
+    if row.get("template") == "moss_anypaint":
+        return "Eight steps · describe the finished image · repaints the selected area"
     if row.get("template") == "fibo2_edit":
         encoder = "Heretic NVFP4 encoder" if str(row.get("id", "")).endswith("-heretic") else "Original BF16 encoder"
         return f"{encoder} · instruction editing · selected area or whole image"

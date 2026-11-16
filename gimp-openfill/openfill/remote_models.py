@@ -13,6 +13,7 @@ from pathlib import PurePosixPath
 
 from .backend import (
     H3_IMAGE_EDIT_TEMPLATE,
+    MOSS_ANYPAINT_TEMPLATE,
     QWEN21_EDIT_TEMPLATE,
     QWEN21_FULL_FILE,
     QWEN21_LIGHTNING_FILE,
@@ -33,6 +34,67 @@ ROREM_ID = "remote-rorem-sdxl"
 QWEN21_ENCODER = "qwen3vl_8b_fp8_scaled.safetensors"
 QWEN21_VAE = "qwen_image_2.1_vae_bf16.safetensors"
 H3_IMAGE_ID = "remote-minimax-h3-image"
+MOSS_ANYPAINT_ID = "remote-moss-anypaint"
+MOSS_ANYPAINT_NODES = ("MOSSAnyPaintPrepare", "MOSSAnyPaintEncode", "MOSSAnyPaintModelPatch")
+# AnyPaint was trained on MOSS-Image Base (not SFT). Comfy-Org's INT8 repack is the
+# published recipe; the BF16 export of the same Base weights is accepted where a host
+# already has it, so no second copy is needed.
+MOSS_BASE_FILES = ("moss_image_base_int8_convrot.safetensors", "moss_image_base_bf16.safetensors")
+MOSS_ENCODER_FILES = ("qwen3.5_9b_int8_convrot.safetensors", "qwen3.5_9b_bf16.safetensors")
+MOSS_VAE_FILE = "flux2-vae_small.safetensors"
+MOSS_ANYPAINT_LORA = "moss_anypaint_rank32.safetensors"
+# lodestones' Base 8-step DMD2 adapter. The KroMOSS install published the same file
+# (SHA-256 7683fe1f...f6f2) under its own name; both spellings are one adapter.
+MOSS_DMD2_FILES = ("lora_dmd2.safetensors", "kromoss_8-step_dmd2.safetensors")
+
+
+def _first_filename(names: list[str], wanted: tuple[str, ...]) -> str:
+    return next((found for found in (_filename(names, name) for name in wanted) if found), "")
+
+
+def _discover_moss_anypaint(client: ComfyClient, source_label: str) -> list[ModelEntry]:
+    """Offer MOSS AnyPaint only when its three nodes and every model file are visible."""
+    if not all(client.object_info(node).get(node) for node in MOSS_ANYPAINT_NODES):
+        return []
+    unet = _first_filename(_options(client.object_info("UNETLoader"), "UNETLoader", "unet_name"), MOSS_BASE_FILES)
+    clip_info = client.object_info("CLIPLoader")
+    if not unet or "moss_image" not in _options(clip_info, "CLIPLoader", "type"):
+        return []
+    encoder = _first_filename(_options(clip_info, "CLIPLoader", "clip_name"), MOSS_ENCODER_FILES)
+    vae = _filename(_options(client.object_info("VAELoader"), "VAELoader", "vae_name"), MOSS_VAE_FILE)
+    loras = _options(client.object_info("LoraLoaderModelOnly"), "LoraLoaderModelOnly", "lora_name")
+    adapter = _filename(loras, MOSS_ANYPAINT_LORA)
+    distill = _first_filename(loras, MOSS_DMD2_FILES)
+    if not all((encoder, vae, adapter, distill)):
+        return []
+    return [
+        ModelEntry(
+            id=MOSS_ANYPAINT_ID,
+            name=f"MOSS AnyPaint · {source_label}",
+            tier="edit",
+            capabilities=("fill", "edit"),
+            arch="moss_image",
+            template=MOSS_ANYPAINT_TEMPLATE,
+            page="https://huggingface.co/yijunwang2/moss-anypaint",
+            license_name="Apache-2.0 (weights) · MIT (nodes)",
+            license_url="https://huggingface.co/yijunwang2/moss-anypaint/blob/main/LICENSE",
+            gated=False,
+            source_type="community",
+            uploader="yijunwang2 (unofficial adapter for OpenMOSS MOSS-Image Base)",
+            min_vram_gb=16,
+            requires_nodes=(),
+            requires_models=(),
+            source="remote",
+            family="moss-anypaint",
+            files=(
+                FileSpec("unet", "", "diffusion_models/" + unet),
+                FileSpec("clip1", "", "text_encoders/" + encoder),
+                FileSpec("vae", "", "vae/" + vae),
+                FileSpec("lora", "", "loras/" + adapter),
+                FileSpec("lora2", "", "loras/" + distill),
+            ),
+        )
+    ]
 
 
 def _discover_h3_image(client: ComfyClient, source_label: str) -> list[ModelEntry]:
@@ -344,6 +406,7 @@ def discover(client: ComfyClient, source_label: str = "Local ComfyUI") -> list[M
         ("SDXL", discover_sdxl),
         ("Qwen Image 2.1", _discover_qwen21),
         ("MiniMax H3 Image", _discover_h3_image),
+        ("MOSS AnyPaint", _discover_moss_anypaint),
         ("LaMa", _discover_lama),
         ("RORem", _discover_rorem),
     ):

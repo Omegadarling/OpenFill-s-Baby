@@ -1192,6 +1192,18 @@ class ModelInfoTests(unittest.TestCase):
         patch = {"capabilities": ["patch"], "size": "1.2 GB"}
         self.assertEqual(model_detail(patch, users), "Needed by the SDXL models · 1.2 GB")
 
+    def test_moss_anypaint_reads_the_same_in_both_panels(self):
+        from openfill_photocraft.modelinfo import model_detail
+
+        text = model_detail({"template": "moss_anypaint", "capabilities": ["fill", "edit"]})
+        self.assertEqual(text, "Eight steps · describe the finished image · repaints the selected area")
+        page = (ROOT / "photocraft" / "openfill_photocraft" / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn(f'if(r.template==="moss_anypaint")return "{text}"', page)
+        native = (ROOT / "photocraft" / "openfill_photocraft" / "bar.py").read_text(encoding="utf-8")
+        hint = "SDXL and MOSS AnyPaint: describe what should appear in the selection."
+        self.assertIn(hint, page)
+        self.assertIn(hint, native)
+
 
 class FactsCacheTests(unittest.TestCase):
     def test_models_show_from_the_last_run_until_the_first_look(self):

@@ -1046,7 +1046,7 @@ class Bar:
         self.sections.apply(self.service.app.settings.panel_layout)
         if key in PLACEHOLDERS:
             self.prompt.set_placeholder(
-                "Qwen and FIBO: describe the change. SDXL: describe what should appear in the selection. Select All to edit the whole image."
+                "Qwen and FIBO: describe the change. SDXL and MOSS AnyPaint: describe what should appear in the selection. Select All to edit the whole image."
                 if self.service.app_for(key).settings.remote_fibo
                 else PLACEHOLDERS[key]
             )

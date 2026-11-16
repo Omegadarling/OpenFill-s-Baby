@@ -559,7 +559,7 @@ function setMode(m){if(remoteFibo&&["expand","txt2img"].includes(m))m="fill";con
   if(m!=="remove")quickRemove="";
   const label=m==="remove"?"Method":"Model";$("model").closest(".row").querySelector("label").textContent=label;$("model").setAttribute("aria-label",label);
   $("remove-scene-row").hidden=m!=="remove";$("remove-text").hidden=m!=="remove";$("expand-box").hidden=m!=="expand";$("create-box").hidden=m!=="txt2img";$("prompt").hidden=m==="remove"||selecting;
-  $("advanced").hidden=remoteFibo||m!=="fill";$("prompt").placeholder=remoteFibo?"Qwen and FIBO: describe the change. SDXL: describe what should appear in the selection. Select All to edit the whole image.":PH[m]||"";$("go").textContent=GO[m];fillSelect();context();if(m==="expand")presets();if(selecting)selectPreview()}
+  $("advanced").hidden=remoteFibo||m!=="fill";$("prompt").placeholder=remoteFibo?"Qwen and FIBO: describe the change. SDXL and MOSS AnyPaint: describe what should appear in the selection. Select All to edit the whole image.":PH[m]||"";$("go").textContent=GO[m];fillSelect();context();if(m==="expand")presets();if(selecting)selectPreview()}
 const sections = new Map([...document.querySelectorAll("[data-panel]")].map(el => [el.dataset.panel, el]));
 let layout = {order: [...sections.keys()], collapsed: ["models", "engine", "generation"]};
 let layoutRevision = 0, layoutQueue = Promise.resolve(), dragged = null;
@@ -1080,7 +1080,7 @@ async function tick(){
 }
 
 // What a model can run, as catalog.job_hint says it: any fill model can also remove; erasers are marked.
-function detail(r){if(r.template==="h3_image_edit")return "Six steps · instruction editing · selected area or whole image";if(r.template==="sdxl_edit")return "SDXL masked editing · describe the desired result · 75% change strength";if(r.template==="sdxl_inpaint_edit")return "SDXL native inpainting · describe the desired result";if(r.template==="fibo2_edit")return ((r.id||"").endsWith("-heretic")?"Heretic NVFP4 encoder":"Original BF16 encoder")+" · instruction editing · selected area or whole image";
+function detail(r){if(r.template==="h3_image_edit")return "Six steps · instruction editing · selected area or whole image";if(r.template==="moss_anypaint")return "Eight steps · describe the finished image · repaints the selected area";if(r.template==="sdxl_edit")return "SDXL masked editing · describe the desired result · 75% change strength";if(r.template==="sdxl_inpaint_edit")return "SDXL native inpainting · describe the desired result";if(r.template==="fibo2_edit")return ((r.id||"").endsWith("-heretic")?"Heretic NVFP4 encoder":"Original BF16 encoder")+" · instruction editing · selected area or whole image";
   if(r.template==="qwen21_edit")return ((r.id||"").endsWith("-lightning-v2-rl")?"Lightning v2 RL · four steps":"Base BF16 checkpoint · 25 steps")+" · instruction editing · selected area or whole image";
   const words={fill:"fill",expand:"expand",txt2img:"create",remove:"remove",edit:"edit"};
   const caps=(r.capabilities||[]).filter(c=>c in words);const list=caps.map(c=>words[c]);

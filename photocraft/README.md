@@ -85,11 +85,27 @@ If you already maintain an SSH tunnel yourself, save its local HTTP address in *
 
 ## Existing-server models
 
-Edit discovers the supported MiniMax H3 Image, Qwen and FIBO checkpoints when their companion weights and nodes are available. Use the [managed model catalog](#managed-engine-models) for the original Fill, Remove, Expand, and Create tools.
+Edit discovers the supported MiniMax H3 Image, MOSS AnyPaint, Qwen and FIBO checkpoints when their companion weights and nodes are available. Use the [managed model catalog](#managed-engine-models) for the original Fill, Remove, Expand, and Create tools.
 
 ### MiniMax H3 Image
 
 On an existing ComfyUI server with the native `MiniMaxH3ImageConditioning` node, use `minimax_h3_image_pruned_int8_convrot.safetensors`, `minimax_h3_image_vae_fp16.safetensors`, and either `qwen3vl_32b_minimax_h3_int8_convrot.safetensors` or `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`. INT8 is preferred when both encoders are visible; NVFP4 requires compatible hardware. The model appears in both Edit and Remove. It uses six steps, processes a crop near 4 megapixels, and protects the area outside the selection. For Remove, **Automatic** selects H3 when it is available and visible on the current engine. The **Method** field shows which model will run. OpenFill clears the selected object using nearby background, then H3 refines that area. Remove uses the selection’s feather and a small outward blend to match the surrounding surface. The completed job shows the model and server used. This discovery applies to existing servers; managed-engine installation does not install these files. [Model files](https://huggingface.co/Comfy-Org/MiniMax-H3-Image)
+
+### MOSS AnyPaint
+
+MOSS AnyPaint repaints the selection with MOSS-Image Base and the community AnyPaint adapter. Write a description of the finished picture, not an instruction: for example, “a green metal sign with a white arrow on a brick wall” rather than “make the sign green.” It uses eight Euler steps at CFG 1, samples a crop of about one megapixel, and protects the area outside the selection. It does not accept reference attachments. Because it repaints the whole selection instead of adjusting what is there, select a little background around the object and keep **Auto-feather** small; a wide inward feather lets the original show through near the selection edge.
+
+Install the [moss-anypaint](https://github.com/alexw5702-afk/moss-anypaint) node pack (v0.2.0, MIT) on a ComfyUI build with native MOSS-Image support (v0.43.0 or later), then add these files. The AnyPaint adapter is an unofficial community release, not endorsed by the MOSS-Image authors.
+
+| Folder | File | Source |
+| --- | --- | --- |
+| `models/diffusion_models` | `moss_image_base_int8_convrot.safetensors` or `moss_image_base_bf16.safetensors` | [Comfy-Org MOSS-Image](https://huggingface.co/Comfy-Org/MOSS-Image) (Apache-2.0) |
+| `models/text_encoders` | `qwen3.5_9b_int8_convrot.safetensors` or `qwen3.5_9b_bf16.safetensors` | Comfy-Org MOSS-Image |
+| `models/vae` | `flux2-vae_small.safetensors` | Comfy-Org MOSS-Image |
+| `models/loras` | `moss_anypaint_rank32.safetensors` | [yijunwang2/moss-anypaint](https://huggingface.co/yijunwang2/moss-anypaint) (Apache-2.0) |
+| `models/loras` | `lora_dmd2.safetensors` | [lodestones/MOSS-Image-Base-8-steps-dmd](https://huggingface.co/lodestones/MOSS-Image-Base-8-steps-dmd) (Apache-2.0) |
+
+INT8 files are preferred when both precisions are visible. Use the Base model, not SFT, and the DMD2 adapter, not the older `lora.safetensors` in the same repository. KroMOSS installs that already have `kromoss_8-step_dmd2.safetensors` can use it: it is the same file as `lora_dmd2.safetensors`.
 
 ### Qwen Image 2.1
 

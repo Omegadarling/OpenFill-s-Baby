@@ -25,6 +25,7 @@ from . import caption, comfy_setup, geometry, hardware, local_models, png, quali
 from . import catalog as cat
 from .backend import (
     H3_IMAGE_EDIT_TEMPLATE,
+    MOSS_ANYPAINT_TEMPLATE,
     QWEN21_EDIT_TEMPLATE,
     SETTINGS_MENU,
     Backend,
@@ -405,6 +406,8 @@ class App:
     def profile_for(self, model: ModelSpec) -> geometry.ModelProfile:
         if model.effective_template == H3_IMAGE_EDIT_TEMPLATE:
             return geometry.ModelProfile("h3_image", min_side=768, max_side=2048, min_context=256, multiple=32)
+        if model.effective_template == MOSS_ANYPAINT_TEMPLATE:
+            return geometry.ModelProfile("moss_anypaint", min_side=768, max_side=1024, min_context=256, multiple=16)
         if model.arch == "fibo2":
             return geometry.ModelProfile("fibo2", min_side=768, max_side=1024, min_context=256, multiple=16)
         if model.effective_template == QWEN21_EDIT_TEMPLATE:
@@ -425,6 +428,9 @@ class App:
         sampler, scheduler = self.settings.sampler, self.settings.scheduler
         if model.effective_template == H3_IMAGE_EDIT_TEMPLATE:
             steps, cfg, sampler, scheduler, denoise = 6, 1.0, "euler", "simple", 1.0
+        elif model.effective_template == MOSS_ANYPAINT_TEMPLATE:
+            # The adapter's published recipe with the Base 8-step DMD2 distillation.
+            steps, cfg, sampler, scheduler, denoise = workflow.MOSS_ANYPAINT_STEPS, 1.0, "euler", "simple", 1.0
         elif model.arch == "fibo2":
             turbo = "turbo" in model.unet.lower()
             cfg, sampler, scheduler, steps = (1.0 if turbo else 5.0), "euler", "simple", (4 if turbo else 30)
@@ -1014,6 +1020,9 @@ class App:
             ws = geometry.WorkingSize(ww, wh, min(ww / ctx.width, wh / ctx.height))
         elif model.effective_template == H3_IMAGE_EDIT_TEMPLATE:
             ww, wh = workflow.h3_image_size(ctx.width, ctx.height)
+            ws = geometry.WorkingSize(ww, wh, min(ww / ctx.width, wh / ctx.height))
+        elif model.effective_template == MOSS_ANYPAINT_TEMPLATE:
+            ww, wh = workflow.moss_anypaint_size(ctx.width, ctx.height)
             ws = geometry.WorkingSize(ww, wh, min(ww / ctx.width, wh / ctx.height))
         mp = geometry.mask_params(
             target,
