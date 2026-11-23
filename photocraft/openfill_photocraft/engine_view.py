@@ -7,6 +7,7 @@ from tkinter import simpledialog
 
 from . import ui
 from .engine_routes import MODES
+from .tips import CONTROLS
 
 CUSTOM = "Other ComfyUI URL…"
 
@@ -25,6 +26,8 @@ class EngineAssignments(tk.Frame):
             pick = ui.Select(self.rows, ui.CW, command=lambda label, m=mode: self.choose(m, label))
             pick.pack(anchor="w", pady=(3, 0))
             self.pickers[mode] = pick
+            pick.set_tips(CONTROLS[f"engine.{mode}"])
+        ui.tip(self.multi, CONTROLS["engine.multi"])
         self.multi.bind("<Button-1>", lambda _: self.save(not self.multi.get()))
         self.multi.configure(takefocus=True)
         self.multi.bind("<space>", lambda _: self.save(not self.multi.get()))
@@ -84,7 +87,10 @@ class ServerFinder(tk.Frame):
         buttons.pack(anchor="w")
         self.find_button = ui.Button(buttons, "Find servers", self.find)
         self.find_button.pack(side="left")
-        ui.Button(buttons, "Add server", self.show_form).pack(side="left", padx=(8, 0))
+        add = ui.Button(buttons, "Add server", self.show_form)
+        add.pack(side="left", padx=(8, 0))
+        ui.tip(self.find_button, CONTROLS["servers.find"])
+        ui.tip(add, CONTROLS["servers.add"])
         self.message = ui.small(self, "")
         self.results = ui.frame(self)
         self.form = ui.frame(self)
@@ -96,8 +102,12 @@ class ServerFinder(tk.Frame):
         self.name.pack(anchor="w", pady=(4, 8))
         actions = ui.frame(self.form)
         actions.pack(anchor="w")
-        ui.Button(actions, "Save server", self.save, "accent").pack(side="left")
-        ui.Button(actions, "Cancel", self.form.pack_forget).pack(side="left", padx=(8, 0))
+        save = ui.Button(actions, "Save server", self.save, "accent")
+        save.pack(side="left")
+        cancel = ui.Button(actions, "Cancel", self.form.pack_forget)
+        cancel.pack(side="left", padx=(8, 0))
+        for widget, key in ((self.address, "address"), (self.name, "name"), (save, "save"), (cancel, "cancel")):
+            ui.tip(widget, CONTROLS[f"servers.{key}"])
 
     def say(self, text, color=ui.DIM):
         self.message.configure(text=text, fg=color)
@@ -148,7 +158,9 @@ class ServerFinder(tk.Frame):
             line = ui.frame(self.results)
             line.pack(fill="x", pady=(4, 0))
             if not row["saved"]:
-                ui.Button(line, "Add", lambda r=row: self.show_form(r["address"], r["name"])).pack(side="right")
+                found = ui.Button(line, "Add", lambda r=row: self.show_form(r["address"], r["name"]))
+                found.pack(side="right")
+                ui.tip(found, CONTROLS["servers.found"])
             label = row["name"] + (" · saved" if row["saved"] else "")
             ui.small(line, label, wrap=ui.CW - 55).pack(side="left")
         self.results.pack(fill="x")

@@ -146,6 +146,15 @@ class SelectView(tk.Frame):
         self.grow_scale.pack(side="left", fill="x", expand=True)
         self.grow_amount.trace_add("write", self._grow_number_changed)
         self.radius.trace_add("write", self._grow_slider_changed)
+        from .tips import CONTROLS
+
+        ui.tip(self.canvas, CONTROLS["select.canvas"])
+        ui.tip(self.show_mask, CONTROLS["select.overlay"])
+        self.ops.set_tips(lambda key: CONTROLS.get(f"select.{key}", ""))
+        ui.tip(self.entry, CONTROLS["select.query"])
+        for widget in (self.grow_scale, self.grow_entry):
+            ui.tip(widget, CONTROLS["select.grow"])
+        ui.tip(self.grow, CONTROLS["select.grow_button"])
 
     def _pixels(self):
         value = self.grow_amount.get()

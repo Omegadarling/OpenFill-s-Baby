@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw
 from openfill.config import FIBO_CONTEXT_MODES, FIBO_EDIT_MODES, validate_fibo_settings
 
 from . import ui
+from .tips import CONTROLS
 from .ui import ACCENT, BAD, BG, CW, DIM, LINE, OK, PANEL, TEXT
 
 if TYPE_CHECKING:
@@ -166,6 +167,8 @@ class SectionStack(tk.Frame):
                 cursor="hand2",
             )
             toggle.pack(side="left", fill="both", expand=True)
+            ui.tip(toggle, CONTROLS["section"])
+            ui.tip(grip, CONTROLS["grip"])
             self.bodies[key] = ui.frame(section)
         self.apply(layout)
 
@@ -293,9 +296,9 @@ class SettingsViews:
         for view in (self.models, self.engine, self.generation):
             view.pack(fill="x")
         if not bar.service.app.settings.remote_fibo:
-            ui.Button(self.engine.managed, "Save engine settings", self.save_engine, "accent").pack(
-                anchor="w", pady=(10, 0)
-            )
+            save = ui.Button(self.engine.managed, "Save engine settings", self.save_engine, "accent")
+            save.pack(anchor="w", pady=(10, 0))
+            ui.tip(save, CONTROLS["engine.save"])
         self.load()
         self._generation_dirty: set[str] = set()
         self.generation.watch_changes(self._generation_dirty.add)
@@ -403,6 +406,7 @@ class ReferenceView(tk.Frame):
             MAX_REFERENCES,
         ):
             self.add.set(label="Drop images here or click to add", width=CW)
+        ui.tip(self.add, CONTROLS["refs.add"])
 
     def say(self, message: str) -> None:
         if message:
@@ -444,14 +448,15 @@ class ReferenceView(tk.Frame):
             box.pack(fill="x", pady=(6, 0))
             buttons = ui.frame(box)
             buttons.pack(side="right", padx=(8, 0))
-            for text, command, width, disabled in (
-                ("↑", lambda i=index: self._move(i, -1), 30, index == 0),
-                ("↓", lambda i=index: self._move(i, 1), 30, index == count - 1),
-                ("Remove", lambda rid=row["id"]: self._remove(rid), 67, False),
+            for text, command, width, disabled, about in (
+                ("↑", lambda i=index: self._move(i, -1), 30, index == 0, "refs.up"),
+                ("↓", lambda i=index: self._move(i, 1), 30, index == count - 1, "refs.down"),
+                ("Remove", lambda rid=row["id"]: self._remove(rid), 67, False, "refs.remove"),
             ):
                 button = ui.Button(buttons, text, command, "secondary", width, 28)
                 button.pack(side="left", padx=(4, 0))
                 button.set(disabled=busy or disabled)
+                ui.tip(button, CONTROLS[about])
             token = syntax.replace("N", str(index + 2)) if syntax else f"Reference {index + 1}"
             ui.small(box, f"{token}  {row['name']}\n{row['width']} × {row['height']}", wrap=CW - 155).pack(
                 side="left", fill="x", expand=True
@@ -529,6 +534,7 @@ class ModelsView(tk.Frame):
         self.bar = bar
         self.hardware = ui.small(self, "Looking...")
         self.hardware.pack(fill="x", pady=(12, 0))
+        ui.tip(self.hardware, CONTROLS["models.hardware"])
         ui.small(self, "Uncheck a model to hide it from the edit dropdown.").pack(fill="x", pady=(4, 0))
         self.note = ui.small(self, "")
         self.installed_title = ui.caption(self, "Installed")
@@ -543,6 +549,8 @@ class ModelsView(tk.Frame):
         self.token = ui.Field(row, CW - 8 - save.w, "hf_...", secret=True, on_enter=self._save_token)
         self.token.pack(side="left")
         save.pack(side="left", padx=(8, 0))
+        ui.tip(self.token, CONTROLS["models.token"])
+        ui.tip(save, CONTROLS["models.save_token"])
         self.key_box.pack(fill="x", pady=(12, 0))
         if bar.service.app.settings.remote_fibo:
             # Keep the empty frame packed: _build uses it as the list insertion
@@ -665,29 +673,31 @@ class ModelsView(tk.Frame):
         detail = model_detail(row, row.get("neededBy", ""))
         width = 0
 
-        def add(widget, w: int, padx=(0, 0)) -> None:
+        def add(widget, w: int, padx=(0, 0), about: str = "") -> None:
             nonlocal width
             widget.pack(side="left", padx=padx)
             width += w + sum(padx)
+            if about:
+                ui.tip(widget, CONTROLS[about])
 
         if row["installed"]:
             if row.get("missing_models"):
                 detail += " · Needs one more download"
                 b = ui.Button(right, "Download", lambda i=row["id"]: self._get(i))
-                add(b, b.w)
+                add(b, b.w, about="models.download")
             elif row.get("missing_nodes"):
                 detail += " · Needs extra parts"
                 b = ui.Button(right, "Install", lambda i=row["id"]: self._nodes(i))
-                add(b, b.w)
+                add(b, b.w, about="models.install")
             elif mode == "working":
                 t = ui.small(right, status, wrap=0)
                 add(t, f.small.measure(status))
             elif row["runnable"] and not row.get("remote"):
-                add(ui.IconButton(right, "trash", lambda r=row: self._uninstall(r)), 28)
+                add(ui.IconButton(right, "trash", lambda r=row: self._uninstall(r)), 28, about="models.uninstall")
         elif mode == "busy":
             parts["percent"] = ui.small(right, "", wrap=0)
             add(parts["percent"], f.small.measure("Waiting"), (0, 4))
-            add(ui.IconButton(right, "close", lambda i=row["id"]: self._stop(i)), 28)
+            add(ui.IconButton(right, "close", lambda i=row["id"]: self._stop(i)), 28, about="models.stop")
             if status.startswith("Downloading"):
                 parts["bar"] = ui.Progress(body, CW - 2 - 24, BG)
                 parts["bar"].pack(fill="x", pady=(8, 0))
@@ -696,18 +706,22 @@ class ModelsView(tk.Frame):
             add(t, f.small.measure(status))
         else:
             b = ui.Button(right, "Resume" if row["partial"] else "Download", lambda i=row["id"]: self._get(i))
-            add(b, b.w)
+            add(b, b.w, about="models.download")
         wrap = CW - 2 - 24 - 12 - width
         names = ui.frame(top)
         names.pack(side="left", fill="x")
         ui.text(names, row["name"], f.body, wrap=wrap).pack(anchor="w")
         ui.small(names, detail, wrap=wrap).pack(anchor="w")
+        from .tips import model_tip
+
+        ui.tip(names, model_tip(row["id"], [row]))
         if row["installed"] and row["runnable"]:
             visibility = ui.Checkbox(body, "Show in dropdown", CW - 26)
             visibility.set(row.get("visible", True))
             visibility.configure(takefocus=True)
             visibility.bind("<space>", lambda _event: visibility.set(not visibility.get()))
             visibility.pack(anchor="w", pady=(4, 0))
+            ui.tip(visibility, CONTROLS["models.visible"])
             visibility.var.trace_add("write", lambda *_args: self._visibility(row["id"], visibility.get()))
             parts["visibility"] = visibility
         self._rows[row["id"]] = parts
@@ -780,6 +794,8 @@ class EngineView(tk.Frame):
             self.folder = ui.Field(row, CW - 8 - browse.w)
             self.folder.pack(side="left")
             browse.pack(side="left", padx=(8, 0))
+            ui.tip(self.folder, CONTROLS["engine.folder"])
+            ui.tip(browse, CONTROLS["engine.browse"])
             return row
 
         from .engine_view import EngineAssignments, ServerFinder
@@ -788,6 +804,7 @@ class EngineView(tk.Frame):
         ui.caption(self.shared_engine, "Shared engine").pack(anchor="w", pady=(12, 0))
         self.source = ui.Select(self.shared_engine, CW, command=self.choose_source)
         self.source.pack(anchor="w", pady=(6, 0))
+        self.source.set_tips(CONTROLS["engine.shared"])
         self.source_url = ui.small(self.shared_engine, "")
         self.source_url.pack(anchor="w", pady=(4, 0))
         self.shared_engine.pack(fill="x")
@@ -802,11 +819,13 @@ class EngineView(tk.Frame):
         box.pack(fill="x", pady=(12, 0))
         self.autostart = ui.Checkbox(self.managed, "Start the AI engine with PhotoCraft")
         self.autostart.pack(anchor="w", pady=(12, 0))
+        ui.tip(self.autostart, CONTROLS["engine.autostart"])
 
         def idle_row(box):
             row = ui.frame(box)
             self.idle = ui.Field(row, 72)
             self.idle.pack(side="left")
+            ui.tip(self.idle, CONTROLS["engine.idle"])
             ui.small(row, "minutes, 0 = never", wrap=0).pack(side="left", padx=(8, 0))
             return row
 
@@ -816,12 +835,17 @@ class EngineView(tk.Frame):
             self.managed, "Extra ComfyUI options", lambda b: ui.Field(b, CW, "for example --lowvram")
         )
         box.pack(fill="x", pady=(12, 0))
+        ui.tip(self.extra, CONTROLS["engine.extra"])
         self.tools = ui.frame(self)
         self.tools.pack(fill="x", pady=(12, 0))
-        ui.Button(self.tools, "Check", self.check).pack(side="left")
+        check = ui.Button(self.tools, "Check", self.check)
+        check.pack(side="left")
         self.stop_button = ui.Button(self.tools, "Stop engine", self.stop)
         self.logs_button = ui.Button(self.tools, "Logs", self.logs)
         self.logs_button.pack(side="left", padx=(8, 0))
+        ui.tip(check, CONTROLS["engine.check"])
+        ui.tip(self.stop_button, CONTROLS["engine.stop"])
+        ui.tip(self.logs_button, CONTROLS["engine.logs"])
         self.result = ui.small(self, "")
         self.sync_source()
 
@@ -940,6 +964,8 @@ class GenerationView(tk.Frame):
                 box, entry = field(row, labels[key], lambda b: ui.Field(b, half))
                 box.pack(side="left", padx=(12 if i else 0, 0))
                 self.fields[key] = entry
+                ui.tip(box, CONTROLS[f"gen.{key}"])
+                ui.tip(entry, CONTROLS[f"gen.{key}"])
         ui.small(
             self.managed_controls,
             "Steps: more is slower and finer. Strictness: how closely the prompt is followed. "
@@ -992,6 +1018,8 @@ class GenerationView(tk.Frame):
             "Soften edges over roughly the outer 10% of the selected area. Larger selections get a wider feather; the selection does not grow.",
         )
         self.auto_feather_help.pack(fill="x", pady=(4, 0))
+        ui.tip(self.auto_feather, CONTROLS["gen.auto_feather"])
+        ui.tip(self.auto_feather_slider, CONTROLS["gen.auto_feather_percent"])
         self.auto_feather.var.trace_add("write", self._sync_auto_feather)
         self.auto_feather_percent.trace_add("write", self._sync_auto_feather)
         self.load_auto_feather(bar.service.app.settings)
@@ -1079,6 +1107,14 @@ class GenerationView(tk.Frame):
         self.fibo_boundary_strength.trace_add("write", self._sync_fibo)
         self.fibo_boundary_match.var.trace_add("write", self._sync_fibo)
         self.load_fibo(settings)
+        for name, select, choices in (("fibo_edit_mode", self.fibo_edit_mode, FIBO_EDIT_MODES),
+                                      ("fibo_context_mode", self.fibo_context_mode, FIBO_CONTEXT_MODES)):
+            keys = {label: key for key, label in choices.items()}
+            select.set_tips(CONTROLS[f"gen.{name}"],
+                            lambda label, name=name, keys=keys: CONTROLS.get(f"gen.{name}.{keys.get(label)}", ""))
+        ui.tip(self.fibo_context_slider, CONTROLS["gen.fibo_context_percent"])
+        ui.tip(self.fibo_boundary_match, CONTROLS["gen.fibo_boundary_match"])
+        ui.tip(self.fibo_boundary_slider, CONTROLS["gen.fibo_boundary_strength"])
 
     @staticmethod
     def _fibo_slider(parent, label, variable, low, high):

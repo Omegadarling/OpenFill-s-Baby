@@ -141,6 +141,35 @@ class InlinePanelTests(unittest.TestCase):
         self.assertEqual(Settings.load(self.service.app.paths.config).comfy_servers[0]["label"], "Room two")
         self.assertEqual(finder.form.winfo_manager(), "")
 
+    def test_every_control_in_the_native_panel_has_a_tooltip(self):
+        from types import SimpleNamespace
+
+        from openfill_photocraft import tips
+
+        from openfill.remote_models import ROREM_ID
+
+        bar = self.bar
+
+        def walk(widget):
+            yield widget
+            for child in widget.winfo_children():
+                yield from walk(child)
+
+        kinds = (ui.Button, ui.IconButton, ui.Seg, ui.Select, ui.Checkbox, ui.Field, ui.PromptBox)
+        untipped = [widget for widget in walk(bar.root) if isinstance(widget, kinds) and not hasattr(widget, "tip_text")]
+        self.assertEqual(untipped, [])
+        self.assertEqual(ui.tip_of(bar.modes, SimpleNamespace(x=ui.CW - 10)), tips.CONTROLS["mode.remove"])
+        self.assertEqual(ui.tip_of(bar.go), tips.CONTROLS["go.fill"])
+        bar.tab.set("remove")
+        self.assertEqual(ui.tip_of(bar.go), tips.CONTROLS["go.remove"])
+        self.assertTrue(ui.tip_of(bar.model_box).startswith(tips.CONTROLS["method"]))
+        bar._model_ids = {"RORem · Engine": ROREM_ID}
+        self.assertEqual(bar.model_box.item_tip("RORem · Engine"), tips.MODELS[ROREM_ID])
+        self.assertEqual(bar.model_box.item_tip(ui.MANAGE), tips.MANAGE)
+        self.assertIn("two repairs", bar.remove_scene_box.item_tip("Automatic"))
+        for key in ("engine", "generation"):
+            self.assertEqual(ui.tip_of(bar.sections.toggles[key]), tips.CONTROLS["section"])
+
     def test_grow_number_and_slider_fit_at_the_native_panel_width(self):
         view = self.bar.select_view_panel
         row = view.grow.master

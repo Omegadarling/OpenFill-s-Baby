@@ -32,6 +32,7 @@ from .menu import Watcher
 from .modelinfo import choose_card_line, download_card_line, hardware_line, needed_by
 from .removal_advice import AUTO, SCENE_PLACEHOLDER, SELECTION_HINT, removal_scenes
 from .service import REMOVE_SELECTION, TEXTURE_LABEL, TEXTURE_REMOVAL, Service
+from .tips import CONTROLS
 from .ui import ACCENT, BAD, BG, CW, DIM, LABEL_W, LINE, OK, PAD, PANEL, TEXT, WARN, W, photo
 
 if TYPE_CHECKING:
@@ -61,6 +62,12 @@ PLACEHOLDERS = {
     "txt2img": "Describe the image you want.",
 }
 NO_SELECTION = "Select an area first: Marquee, Lasso or Object Selection."
+SETUP_TIPS = {  # the setup card's buttons, by label
+    "Download ComfyUI": CONTROLS["setup.download"],
+    "Choose folder": CONTROLS["setup.folder"],
+    "How to install": CONTROLS["setup.help"],
+    "Open model manager": CONTROLS["setup.models"],
+}
 NO_MODELS = "No models installed"
 STATUS_COLOR = {"Ready": OK, "Not set up": WARN, "Checking...": DIM, "Starting the AI engine...": WARN}
 
@@ -615,11 +622,54 @@ class Bar:
         self.cancel_button = ui.Button(self.actions, "Cancel", self.service.cancel, "secondary", CW, 36)
 
         self._build_pill()
+        self._attach_tips()
         root.bind("<Escape>", lambda _e: self.service.cancel() if self.service.busy() else None)
         self.select_tab("fill")
         self.pick_variations(self.variations.get())
         self.pick_size("Square")
         self._update_target()
+
+    def _attach_tips(self) -> None:
+        """A tooltip for every control of the Tools section, the header and the action bar."""
+        from . import tips
+
+        c = tips.CONTROLS
+        for widget in (self.status, self.status_dot):
+            ui.tip(widget, c["status"])
+        ui.tip(self.collapse_button, c["collapse"])
+        ui.tip(self.pill, c["pill"])
+        self.modes.set_tips(lambda key: c.get(f"mode.{key}", ""))
+        self.edit_tools.set_tips(lambda key: c.get(f"tool.{key}", ""))
+        ui.tip(self.context_row, c["context"])
+        self.remove_scene_box.set_tips(c["remove.kind"], self._scene_tip)
+        ui.tip(self.prompt, c["prompt"])
+        self.size_seg.set_tips(lambda key: c["size"] if key else "")
+        self.target_seg.set_tips(lambda key: c.get(f"target.{key}", ""))
+        self.var_seg.set_tips(lambda key: c["variations"] if key else "")
+        self.model_box.set_tips(lambda: c["method" if self.tab.get() == "remove" else "model"], self._model_tip)
+        ui.tip(self.reference_status, c["references"])
+        ui.tip(self.thumbs, c["thumbs"])
+        ui.tip(self.discard_button, c["discard"])
+        ui.tip(self.keep_all_button, c["keep_all"])
+        ui.tip(self.keep_button, c["keep"])
+        ui.tip(self.go, lambda _event: c.get(f"go.{self.tab.get()}", ""))
+        ui.tip(self.cancel_button, c["cancel"])
+
+    def _model_tip(self, label: str) -> str:
+        """What the Model (or Method) entry ``label`` is good and bad at."""
+        from . import tips
+
+        if label == ui.MANAGE:
+            return tips.MANAGE
+        model_id = self._model_ids.get(label)
+        return tips.model_tip(model_id, self.refresher.get().get("rows") or []) if model_id else ""
+
+    def _scene_tip(self, label: str) -> str:
+        from . import tips
+
+        scene = self.scene_choices.get(label)
+        method = next((short_name(n) for n, i in self._model_ids.items() if scene and i == scene["method"]), "")
+        return tips.scene_tip(label, scene, method)
 
     def _row(self, parent: tk.Misc, label: str, pady=(0, 0), *, label_var=None, label_width=LABEL_W) -> tk.Frame:
         """A label column followed by the control, packed into the returned frame."""
@@ -1684,7 +1734,9 @@ class Bar:
             width = (CW - 24 - 8 * (n - 1)) // n
             for i, (label, style, command) in enumerate(buttons):
                 w = width if i < n - 1 else CW - 24 - (width + 8) * (n - 1)
-                ui.Button(row, label, command, style, w, 32, PANEL).pack(side="left", padx=(8 if i else 0, 0))
+                button = ui.Button(row, label, command, style, w, 32, PANEL)
+                button.pack(side="left", padx=(8 if i else 0, 0))
+                ui.tip(button, SETUP_TIPS.get(label, ""))
         self.setup.lift_corners()
 
     def _update_job(self, st: dict[str, Any]) -> None:
@@ -1820,6 +1872,7 @@ class Bar:
             caption = thumb_caption(index, getattr(layer, "label", ""), cw)
             cell.create_text(cw / 2, 92, text=caption, font=self.small, fill=DIM, tags="number")
             cell.bind("<Button-1>", lambda _e, i=index: self.pick_variation(i))
+            ui.tip(cell, ui.tip_of(self.thumbs))
             self.thumb_cells.append(cell)
 
     def run(self, alive) -> None:

@@ -139,42 +139,42 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   <div class="left" id="head-tools">
     <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><rect width="18" height="18" rx="3.6" fill="#4a8ef0"/><polygon points="9,2.52 10.44,7.56 15.48,9 10.44,10.44 9,15.48 7.56,10.44 2.52,9 7.56,7.56" fill="#fff"/><polygon points="13.68,3.24 14.31,4.05 15.84,4.68 14.31,5.31 13.68,6.12 13.05,5.31 11.52,4.68 13.05,4.05" fill="#fff"/></svg>
     <span class="name">OpenFill</span>
-    <span class="status"><span class="dot" id="dot"></span><span id="status">Checking...</span></span>
+    <span class="status" data-tip="status"><span class="dot" id="dot"></span><span id="status">Checking...</span></span>
   </div>
 </header>
 
 <main id="panel-sections" class="content">
   <section class="panel-section" data-panel="edit">
     <div class="section-head">
-      <button type="button" class="section-toggle" aria-controls="body-edit" aria-expanded="true">Tools</button>
+      <button type="button" class="section-toggle" data-tip="section" aria-controls="body-edit" aria-expanded="true">Tools</button>
       <button type="button" class="grip" draggable="true" aria-label="Reorder Tools" title="Drag to reorder, or use the Up and Down arrows">⠿</button>
     </div>
     <div id="body-edit" class="section-body stack">
-    <div class="seg" id="modes" role="group" aria-label="Mode"><button data-mode="select">Select</button><button data-mode="fill" class="on">Edit</button><button data-mode="remove">Remove</button></div>
-    <div class="seg s12" id="edit-tools" role="group" aria-label="Edit tool" hidden><button data-tool="fill">Fill</button><button data-tool="expand">Expand</button><button data-tool="txt2img">Create</button></div>
-    <div class="context" id="context"><span id="ctx-icon"></span><span id="ctx-text">Connecting to PhotoCraft...</span></div>
+    <div class="seg" id="modes" role="group" aria-label="Mode"><button data-mode="select" data-tip="mode.select">Select</button><button data-mode="fill" class="on" data-tip="mode.fill">Edit</button><button data-mode="remove" data-tip="mode.remove">Remove</button></div>
+    <div class="seg s12" id="edit-tools" role="group" aria-label="Edit tool" hidden><button data-tool="fill" data-tip="tool.fill">Fill</button><button data-tool="expand" data-tip="tool.expand">Expand</button><button data-tool="txt2img" data-tip="tool.txt2img">Create</button></div>
+    <div class="context" id="context" data-tip="context"><span id="ctx-icon"></span><span id="ctx-text">Connecting to PhotoCraft...</span></div>
     <div id="select-box" class="stack" hidden>
       <div class="small">WeVisOne-VL · Click an object, drag a box around it, or describe it.</div>
-      <div id="select-surface" style="position:relative;display:grid;place-items:center;min-height:100px;background:#18191b;border-radius:5px">
+      <div id="select-surface" data-tip="select.canvas" style="position:relative;display:grid;place-items:center;min-height:100px;background:#18191b;border-radius:5px">
         <span class="small" id="select-placeholder">Reading the canvas…</span>
         <img id="select-image" alt="Click an object or drag a box around it in the current PhotoCraft canvas" draggable="false" hidden style="max-width:100%;max-height:300px;width:auto;height:auto;cursor:crosshair;touch-action:none;user-select:none">
         <span id="select-marquee" aria-hidden="true" hidden style="position:absolute;pointer-events:none;border:2px dashed var(--accent);background:#4a8ef019"></span>
       </div>
-      <button id="select-overlay" class="btn" hidden>Show selection overlay</button>
-      <div class="seg s12" id="select-ops" role="group" aria-label="Combine selection"><button data-op="replace" class="on">Replace</button><button data-op="add">Add</button><button data-op="subtract">Subtract</button></div>
-      <label class="field"><span class="label">Describe an object (optional)</span><input id="select-query" type="text" maxlength="500" placeholder="e.g. the cup on the left"></label>
+      <button id="select-overlay" class="btn" data-tip="select.overlay" hidden>Show selection overlay</button>
+      <div class="seg s12" id="select-ops" role="group" aria-label="Combine selection"><button data-op="replace" class="on" data-tip="select.replace">Replace</button><button data-op="add" data-tip="select.add">Add</button><button data-op="subtract" data-tip="select.subtract">Subtract</button></div>
+      <label class="field" data-tip="select.query"><span class="label">Describe an object (optional)</span><input id="select-query" type="text" maxlength="500" placeholder="e.g. the cup on the left"></label>
       <div class="row grow-row">
-        <label for="select-px">Grow selection</label>
-        <input id="select-radius" type="range" min="1" max="64" step="1" value="4" aria-label="Grow amount slider">
+        <label for="select-px" data-tip="select.grow">Grow selection</label>
+        <input id="select-radius" type="range" min="1" max="64" step="1" value="4" aria-label="Grow amount slider" data-tip="select.grow">
         <input id="select-px" type="number" min="1" max="500" step="1" value="4" required aria-label="Grow amount in pixels" title="1–500 document pixels">
-        <span class="small">px</span><button class="btn" id="select-grow">Grow</button>
+        <span class="small">px</span><button class="btn" id="select-grow" data-tip="select.grow_button">Grow</button>
       </div>
     </div>
-    <div class="row" id="remove-scene-row" hidden><label for="remove-scene">Kind of removal</label><div class="select"><select id="remove-scene"><option value="auto">Automatic</option></select></div></div>
+    <div class="row" id="remove-scene-row" hidden><label for="remove-scene" data-tip="remove.kind">Kind of removal</label><div class="select"><select id="remove-scene"><option value="auto">Automatic</option></select></div></div>
     <div class="small" id="remove-text" hidden>Select the object and its shadow. Remove includes a small edge margin to clear outlines.</div>
     <div class="stack" id="expand-box" hidden>
-      <div class="seg s12 fit" id="presets" role="group" aria-label="Size"></div>
-      <div class="grid4">
+      <div class="seg s12 fit" id="presets" role="group" aria-label="Size" data-tip="expand.ratio"></div>
+      <div class="grid4" data-tip="expand.margin">
         <div class="field"><span class="label">Left</span><input id="e-left" type="number" value="0"></div>
         <div class="field"><span class="label">Top</span><input id="e-top" type="number" value="0"></div>
         <div class="field"><span class="label">Right</span><input id="e-right" type="number" value="0"></div>
@@ -182,32 +182,32 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
       <div class="small" id="exp-size" style="text-align:center"></div>
     </div>
-    <textarea id="prompt" aria-label="Prompt" rows="3"></textarea>
+    <textarea id="prompt" aria-label="Prompt" rows="3" data-tip="prompt"></textarea>
     <div class="stack" id="create-box" hidden>
-      <div class="row"><label>Size</label><div class="seg s12" id="sizes"><button data-w="1024" data-h="1024" class="on">Square</button><button data-w="1216" data-h="832">Landscape</button><button data-w="832" data-h="1216">Portrait</button></div></div>
+      <div class="row" data-tip="size"><label>Size</label><div class="seg s12" id="sizes"><button data-w="1024" data-h="1024" class="on">Square</button><button data-w="1216" data-h="832">Landscape</button><button data-w="832" data-h="1216">Portrait</button></div></div>
       <div class="small under" id="size-px">1024 x 1024 px</div>
-      <div class="row"><label>Result as</label><div class="seg s12" id="targets"><button data-target="image" class="on">New image</button><button data-target="layer">Layer in this image</button></div></div>
+      <div class="row"><label>Result as</label><div class="seg s12" id="targets"><button data-target="image" class="on" data-tip="target.image">New image</button><button data-target="layer" data-tip="target.layer">Layer in this image</button></div></div>
     </div>
     <div class="stack" id="model-options">
-      <div class="row"><label>Variations</label><div class="seg s12" id="vars"><button class="on">1</button><button>2</button><button>3</button><button>4</button><button>5</button></div></div>
+      <div class="row" data-tip="variations"><label>Variations</label><div class="seg s12" id="vars"><button class="on">1</button><button>2</button><button>3</button><button>4</button><button>5</button></div></div>
       <div class="row"><label>Model</label><div class="select"><select id="model" aria-label="Model"></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a9ba2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div></div>
     </div>
     <details id="advanced"><summary>More options</summary><div class="stack">
-      <div class="field"><span class="label">Avoid</span><input id="neg" type="text" placeholder="What should not appear"></div>
-      <div class="field"><span class="label">Change amount <span id="str-v">1.00</span></span><input id="strength" type="range" min="0.3" max="1" step="0.05" value="1"></div>
-      <div class="field"><span class="label">Seed (empty = random)</span><input id="seed" type="number"></div>
+      <div class="field" data-tip="neg"><span class="label">Avoid</span><input id="neg" type="text" placeholder="What should not appear"></div>
+      <div class="field" data-tip="strength"><span class="label">Change amount <span id="str-v">1.00</span></span><input id="strength" type="range" min="0.3" max="1" step="0.05" value="1"></div>
+      <div class="field" data-tip="seed"><span class="label">Seed (empty = random)</span><input id="seed" type="number"></div>
     </div></details>
     </div>
   </section>
   <section class="panel-section" data-panel="references">
     <div class="section-head">
-      <button type="button" class="section-toggle" aria-controls="body-references" aria-expanded="true">Reference Images</button>
+      <button type="button" class="section-toggle" data-tip="section" aria-controls="body-references" aria-expanded="true">Reference Images</button>
       <button type="button" class="grip" draggable="true" aria-label="Reorder Reference Images" title="Drag to reorder, or use the Up and Down arrows">⠿</button>
     </div>
     <div id="body-references" class="section-body stack">
       <div id="reference-help" class="small"></div>
       <div id="reference-list" class="stack"></div>
-      <div class="reference-dropzone" id="reference-dropzone" role="group" aria-label="Add reference images">
+      <div class="reference-dropzone" id="reference-dropzone" role="group" aria-label="Add reference images" data-tip="refs.add">
         <span class="small">Drop image files here</span>
         <button class="btn" id="add-references">Browse…</button>
       </div>
@@ -217,78 +217,78 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </section>
   <section class="panel-section" data-panel="models">
     <div class="section-head">
-      <button type="button" class="section-toggle" aria-controls="body-models" aria-expanded="false">Manage Models</button>
+      <button type="button" class="section-toggle" data-tip="section" aria-controls="body-models" aria-expanded="false">Manage Models</button>
       <button type="button" class="grip" draggable="true" aria-label="Reorder Manage Models" title="Drag to reorder, or use the Up and Down arrows">⠿</button>
     </div>
     <div id="body-models" class="section-body stack" hidden>
     <div class="stack" id="sec-models" style="gap:12px">
       <div class="small">Uncheck a model to hide it from the dropdown.</div>
-      <div class="small" id="hw">Looking...</div>
+      <div class="small" id="hw" data-tip="models.hardware">Looking...</div>
       <div class="note" id="mnote" hidden></div>
       <div class="stack" style="gap:6px" id="inst-box"><div class="label">Installed</div><div class="list" id="installed"></div></div>
       <div class="stack" style="gap:6px" id="avail-box"><div class="label">Available</div><div class="list" id="available"></div></div>
-      <div class="stack" style="gap:6px"><div class="label">Hugging Face key (for FLUX)</div><div style="display:flex;gap:8px"><input id="token" type="password" placeholder="hf_..." aria-label="Hugging Face key"><button class="btn" id="save-token">Save</button></div></div>
+      <div class="stack" style="gap:6px"><div class="label">Hugging Face key (for FLUX)</div><div style="display:flex;gap:8px"><input id="token" type="password" data-tip="models.token" placeholder="hf_..." aria-label="Hugging Face key"><button class="btn" id="save-token" data-tip="models.save_token">Save</button></div></div>
       <div style="height:4px"></div>
     </div>
     </div>
   </section>
   <section class="panel-section" data-panel="engine">
     <div class="section-head">
-      <button type="button" class="section-toggle" aria-controls="body-engine" aria-expanded="false">Engine</button>
+      <button type="button" class="section-toggle" data-tip="section" aria-controls="body-engine" aria-expanded="false">Engine</button>
       <button type="button" class="grip" draggable="true" aria-label="Reorder Engine" title="Drag to reorder, or use the Up and Down arrows">⠿</button>
     </div>
     <div id="body-engine" class="section-body stack" hidden>
     <div class="stack">
-      <div style="display:flex;gap:8px"><button class="btn" id="find-servers">Find servers</button><button class="btn" id="add-server">Add server</button></div>
+      <div style="display:flex;gap:8px"><button class="btn" id="find-servers" data-tip="servers.find">Find servers</button><button class="btn" id="add-server" data-tip="servers.add">Add server</button></div>
       <div class="note dim" id="server-note" role="status" hidden></div>
       <div class="stack" id="found-servers" hidden></div>
       <form id="server-form" class="stack" hidden>
-        <label class="field"><span class="label">ComfyUI address</span><input id="server-address" required placeholder="studio.local:8188 or ssh://studio:8188"></label>
-        <label class="field"><span class="label">Name (optional)</span><input id="server-name" maxlength="100"></label>
-        <div style="display:flex;gap:8px"><button class="btn" type="submit">Save server</button><button type="button" class="btn" id="cancel-server">Cancel</button></div>
+        <label class="field" data-tip="servers.address"><span class="label">ComfyUI address</span><input id="server-address" required placeholder="studio.local:8188 or ssh://studio:8188"></label>
+        <label class="field" data-tip="servers.name"><span class="label">Name (optional)</span><input id="server-name" maxlength="100"></label>
+        <div style="display:flex;gap:8px"><button class="btn" type="submit" data-tip="servers.save">Save server</button><button type="button" class="btn" id="cancel-server" data-tip="servers.cancel">Cancel</button></div>
       </form>
     </div>
-    <label class="check"><input type="checkbox" id="multi-engine"><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><span>Multi-engine</span></label>
+    <label class="check" data-tip="engine.multi"><input type="checkbox" id="multi-engine"><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><span>Multi-engine</span></label>
     <div id="engine-assignments" class="stack" hidden>
-      <label class="field"><span class="label">Select</span><select id="engine-select" aria-label="Select engine"></select></label>
-      <label class="field"><span class="label">Edit</span><select id="engine-edit" aria-label="Edit engine"></select></label>
-      <label class="field"><span class="label">Remove</span><select id="engine-remove" aria-label="Remove engine"></select></label>
+      <label class="field" data-tip="engine.select"><span class="label">Select</span><select id="engine-select" aria-label="Select engine"></select></label>
+      <label class="field" data-tip="engine.edit"><span class="label">Edit</span><select id="engine-edit" aria-label="Edit engine"></select></label>
+      <label class="field" data-tip="engine.remove"><span class="label">Remove</span><select id="engine-remove" aria-label="Remove engine"></select></label>
     </div>
-    <div id="shared-engine" class="stack" hidden><label class="field"><span class="label">Shared engine</span><select id="fibo-source" aria-label="Shared engine"></select></label><div class="small" id="source-detail"></div></div>
+    <div id="shared-engine" class="stack" hidden><label class="field" data-tip="engine.shared"><span class="label">Shared engine</span><select id="fibo-source" aria-label="Shared engine"></select></label><div class="small" id="source-detail"></div></div>
     <div class="stack" id="sec-engine" style="gap:12px">
-      <div class="field"><span class="label">ComfyUI folder</span><input id="s-comfy_dir" type="text" aria-label="ComfyUI folder"></div>
-      <label class="check"><input type="checkbox" id="s-autostart"><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Start the AI engine with PhotoCraft</span></label>
-      <div class="field"><span class="label">Stop after idle</span><div style="display:flex;gap:8px;align-items:center"><input id="s-idle_timeout_minutes" type="number" style="width:72px" aria-label="Stop after idle, minutes"><span class="small">minutes, 0 = never</span></div></div>
-      <div class="field"><span class="label">Extra ComfyUI options</span><input id="s-extra_server_args" type="text" placeholder="for example --lowvram" aria-label="Extra ComfyUI options"></div>
+      <div class="field" data-tip="engine.folder"><span class="label">ComfyUI folder</span><input id="s-comfy_dir" type="text" aria-label="ComfyUI folder"></div>
+      <label class="check" data-tip="engine.autostart"><input type="checkbox" id="s-autostart"><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Start the AI engine with PhotoCraft</span></label>
+      <div class="field" data-tip="engine.idle"><span class="label">Stop after idle</span><div style="display:flex;gap:8px;align-items:center"><input id="s-idle_timeout_minutes" type="number" style="width:72px" aria-label="Stop after idle, minutes"><span class="small">minutes, 0 = never</span></div></div>
+      <div class="field" data-tip="engine.extra"><span class="label">Extra ComfyUI options</span><input id="s-extra_server_args" type="text" placeholder="for example --lowvram" aria-label="Extra ComfyUI options"></div>
       <div class="divider"></div>
-      <div class="stack"><div class="label">Engine</div><div style="display:flex;gap:8px"><button class="btn" id="check">Check</button><button class="btn" id="stop">Stop engine</button><button class="btn" id="logs">Logs</button></div><div class="note dim" id="check-out" hidden></div></div>
+      <div class="stack"><div class="label">Engine</div><div style="display:flex;gap:8px"><button class="btn" id="check" data-tip="engine.check">Check</button><button class="btn" id="stop" data-tip="engine.stop">Stop engine</button><button class="btn" id="logs" data-tip="engine.logs">Logs</button></div><div class="note dim" id="check-out" hidden></div></div>
     </div>
-      <button class="btn" id="save-engine">Save engine settings</button>
+      <button class="btn" id="save-engine" data-tip="engine.save">Save engine settings</button>
     </div>
   </section>
   <section class="panel-section" data-panel="generation">
     <div class="section-head">
-      <button type="button" class="section-toggle" aria-controls="body-generation" aria-expanded="false">Generation</button>
+      <button type="button" class="section-toggle" data-tip="section" aria-controls="body-generation" aria-expanded="false">Generation</button>
       <button type="button" class="grip" draggable="true" aria-label="Reorder Generation" title="Drag to reorder, or use the Up and Down arrows">⠿</button>
     </div>
     <div id="body-generation" class="section-body stack" hidden>
     <div class="stack" id="sec-generation" style="gap:12px">
       <div class="small" id="remote-defaults" hidden>Qwen Lightning uses its four-step schedule. FIBO Turbo uses 4 steps and FIBO Dev uses 30. SDXL uses 25 steps and 75% change strength.</div>
-      <div class="grid2" data-legacy-generation><div class="field"><span class="label">Steps</span><input id="s-steps" type="number"></div><div class="field"><span class="label">Prompt strictness (CFG)</span><input id="s-cfg" type="number" step="0.5"></div></div>
-      <div class="grid2" data-legacy-generation><div class="field"><span class="label">Repaint margin (%)</span><input id="s-grow_percent" type="number"></div><div class="field"><span class="label">Edge softness (%)</span><input id="s-feather_percent" type="number"></div></div>
+      <div class="grid2" data-legacy-generation><div class="field" data-tip="gen.steps"><span class="label">Steps</span><input id="s-steps" type="number"></div><div class="field" data-tip="gen.cfg"><span class="label">Prompt strictness (CFG)</span><input id="s-cfg" type="number" step="0.5"></div></div>
+      <div class="grid2" data-legacy-generation><div class="field" data-tip="gen.grow_percent"><span class="label">Repaint margin (%)</span><input id="s-grow_percent" type="number"></div><div class="field" data-tip="gen.feather_percent"><span class="label">Edge softness (%)</span><input id="s-feather_percent" type="number"></div></div>
       <div class="small" data-legacy-generation>Steps: more is slower and finer. Strictness: how closely the prompt is followed. Margin: how far past the selection the fill may repaint, as a share of its size.</div>
-      <label class="check"><input type="checkbox" id="s-auto_feather" checked><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Auto-feather selection</span></label>
-      <div class="field"><label class="label" for="s-auto_feather_percent">Feather area <output id="auto-feather-value" for="s-auto_feather_percent">10%</output></label><input id="s-auto_feather_percent" type="range" min="0" max="100" step="1" value="10" aria-describedby="auto-feather-help"></div>
+      <label class="check" data-tip="gen.auto_feather"><input type="checkbox" id="s-auto_feather" checked><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Auto-feather selection</span></label>
+      <div class="field" data-tip="gen.auto_feather_percent"><label class="label" for="s-auto_feather_percent">Feather area <output id="auto-feather-value" for="s-auto_feather_percent">10%</output></label><input id="s-auto_feather_percent" type="range" min="0" max="100" step="1" value="10" aria-describedby="auto-feather-help"></div>
       <div class="small" id="auto-feather-help">Soften edges over roughly the outer 10% of the selected area. Larger selections get a wider feather; the selection does not grow.</div>
       <div class="stack" id="fibo-edit-settings" style="gap:12px" hidden>
         <div class="divider"></div>
-        <div class="field"><label class="label" for="s-fibo_edit_mode">FIBO editing</label><select id="s-fibo_edit_mode" aria-describedby="fibo-mode-help"><option value="preserve">Preserve structure</option><option value="replace">Replace selected content</option></select></div>
+        <div class="field" data-tip="gen.fibo_edit_mode"><label class="label" for="s-fibo_edit_mode">FIBO editing</label><select id="s-fibo_edit_mode" aria-describedby="fibo-mode-help"><option value="preserve" data-tip="gen.fibo_edit_mode.preserve">Preserve structure</option><option value="replace" data-tip="gen.fibo_edit_mode.replace">Replace selected content</option></select></div>
         <div class="small" id="fibo-mode-help">Starts from the original pixels and limits regeneration to the selection, retaining more of the existing structure. Some details may still change.</div>
-        <div class="field"><label class="label" for="s-fibo_context_mode">Image context</label><select id="s-fibo_context_mode" aria-describedby="fibo-context-help"><option value="local">Surrounding area</option><option value="full">Full image</option></select></div>
-        <div class="field"><label class="label" for="s-fibo_context_percent">Context margin <output id="fibo-context-value" for="s-fibo_context_percent">100%</output></label><input id="s-fibo_context_percent" type="range" min="25" max="200" step="1" value="100" aria-describedby="fibo-context-help"></div>
+        <div class="field" data-tip="gen.fibo_context_mode"><label class="label" for="s-fibo_context_mode">Image context</label><select id="s-fibo_context_mode" aria-describedby="fibo-context-help"><option value="local" data-tip="gen.fibo_context_mode.local">Surrounding area</option><option value="full" data-tip="gen.fibo_context_mode.full">Full image</option></select></div>
+        <div class="field" data-tip="gen.fibo_context_percent"><label class="label" for="s-fibo_context_percent">Context margin <output id="fibo-context-value" for="s-fibo_context_percent">100%</output></label><input id="s-fibo_context_percent" type="range" min="25" max="200" step="1" value="100" aria-describedby="fibo-context-help"></div>
         <div class="small" id="fibo-context-help">Include a margin on each side equal to 100% of the selection's larger dimension. The editable area stays the same.</div>
-        <label class="check"><input type="checkbox" id="s-fibo_boundary_match" checked><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Match boundary colors</span></label>
-        <div class="field"><label class="label" for="s-fibo_boundary_strength">Matching strength <output id="fibo-boundary-value" for="s-fibo_boundary_strength">50%</output></label><input id="s-fibo_boundary_strength" type="range" min="0" max="100" step="1" value="50" aria-describedby="fibo-boundary-help"></div>
+        <label class="check" data-tip="gen.fibo_boundary_match"><input type="checkbox" id="s-fibo_boundary_match" checked><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Match boundary colors</span></label>
+        <div class="field" data-tip="gen.fibo_boundary_strength"><label class="label" for="s-fibo_boundary_strength">Matching strength <output id="fibo-boundary-value" for="s-fibo_boundary_strength">50%</output></label><input id="s-fibo_boundary_strength" type="range" min="0" max="100" step="1" value="50" aria-describedby="fibo-boundary-help"></div>
         <div class="small" id="fibo-boundary-help">Reduce color seams at selection edges. This does not reconnect mismatched shapes.</div>
       </div>
       <div class="note" id="gen-out" hidden></div>
@@ -306,11 +306,11 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <img id="preview" alt="Live preview" hidden>
       <div class="stack" id="pick" hidden style="padding-top:4px">
         <div class="label">Results</div>
-        <div class="thumbs" id="thumbs"></div>
+        <div class="thumbs" id="thumbs" data-tip="thumbs"></div>
         <div class="variation-actions" id="variation-actions">
-          <button class="btn" data-keep="none">Discard</button>
-          <button class="btn" data-keep="all">Keep all</button>
-          <button class="primary" data-keep="selected">Keep</button>
+          <button class="btn" data-keep="none" data-tip="discard">Discard</button>
+          <button class="btn" data-keep="all" data-tip="keep_all">Keep all</button>
+          <button class="primary" data-keep="selected" data-tip="keep">Keep</button>
         </div>
       </div>
     </div>
@@ -318,7 +318,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </div>
   <div class="actions" id="tool-actions">
     <button class="primary" id="go">Generate</button>
-    <button class="btn" id="cancel" hidden>Cancel</button>
+    <button class="btn" id="cancel" data-tip="cancel" hidden>Cancel</button>
   </div>
 <div class="spacer"></div>
 <div class="foot small">Browser view: the same tools when the panel cannot open a window. Expand uses pixel margins here instead of the drag editor.</div>
@@ -347,6 +347,20 @@ const GO={select:"Select by description",fill:"Generate",remove:"Remove",expand:
 const PH={fill:"Describe what to add, or leave it empty to fill from the surroundings.",expand:"Optional: describe what the new area shows.",txt2img:"Describe the image you want."};
 const NO_SEL="Select an area first: Marquee, Lasso or Object Selection.";
 const REMOVE_SELECTION="Select the object and its shadow, leaving some background outside the selection.";
+// Tooltips: controls carry data-tip keys; models and methods are keyed by id (openfill_photocraft/tips.py).
+let TIPS={controls:{}}, modelTips={};
+function applyTips(root){(root||document).querySelectorAll("[data-tip]").forEach(el=>{const t=TIPS.controls[el.dataset.tip];if(t)el.title=t})}
+function tipSelects(){const c=TIPS.controls,s=$("model");
+  const head=c[mode==="remove"?"method":"model"]||"",current=s.value==="__manage"?"":modelTips[s.value]||"";
+  s.title=[head,current].filter(Boolean).join("\n\n");
+  for(const o of s.options)o.title=o.value==="__manage"?(TIPS.manage||""):modelTips[o.value]||"";
+  const box=$("remove-scene");
+  for(const o of box.options)o.title=o.value==="auto"?(TIPS.auto||""):o.value===""?(TIPS.manual||""):(removalScenes.find(x=>x.scene===o.value)||{}).tip||"";
+  box.title=[c["remove.kind"]||"",(box.selectedOptions[0]||{}).title||""].filter(Boolean).join("\n\n");
+  for(const id of ["s-fibo_edit_mode","s-fibo_context_mode"])$(id).title=($(id).selectedOptions[0]||{}).title||"";
+  $("go").title=c["go."+mode]||""}
+get("/api/tips").then(t=>{TIPS=t;applyTips();tipSelects()}).catch(()=>{});
+document.addEventListener("change",e=>{if(e.target.tagName==="SELECT")tipSelects()});
 let mode="fill", doc=null, sel=null, models=[], activeId="", lastSeq=-1, busy=false, lastPick=-1, note=null, pc={}, comfy=true, variations=1, target="image", size=[1024,1024], removal="", variationSet=null, remoteFibo=false, backendSource="";
 
 function segPick(box,btn){box.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b===btn))}
@@ -560,7 +574,7 @@ function setMode(m){if(remoteFibo&&["expand","txt2img"].includes(m))m="fill";con
   if(m!=="remove")quickRemove="";
   const label=m==="remove"?"Method":"Model";$("model").closest(".row").querySelector("label").textContent=label;$("model").setAttribute("aria-label",label);
   $("remove-scene-row").hidden=m!=="remove";$("remove-text").hidden=m!=="remove";$("expand-box").hidden=m!=="expand";$("create-box").hidden=m!=="txt2img";$("prompt").hidden=m==="remove"||selecting;
-  $("advanced").hidden=remoteFibo||m!=="fill";$("prompt").placeholder=remoteFibo?"Qwen and FIBO: describe the change. SDXL and MOSS AnyPaint: describe what should appear in the selection. Select All to edit the whole image.":PH[m]||"";$("go").textContent=GO[m];fillSelect();context();if(m==="expand")presets();if(selecting)selectPreview()}
+  tipSelects();$("advanced").hidden=remoteFibo||m!=="fill";$("prompt").placeholder=remoteFibo?"Qwen and FIBO: describe the change. SDXL and MOSS AnyPaint: describe what should appear in the selection. Select All to edit the whole image.":PH[m]||"";$("go").textContent=GO[m];fillSelect();context();if(m==="expand")presets();if(selecting)selectPreview()}
 const sections = new Map([...document.querySelectorAll("[data-panel]")].map(el => [el.dataset.panel, el]));
 let layout = {order: [...sections.keys()], collapsed: ["models", "engine", "generation"]};
 let layoutRevision = 0, layoutQueue = Promise.resolve(), dragged = null;
@@ -694,16 +708,17 @@ function drawReferences() {
     name.textContent = (syntax ? syntax.replace("N", String(index+2)) : String(index+2)) + "  " + reference.name;
     name.title = reference.name;
     row.append(name);
-    for (const [label, text, disabled, callback] of [
-      ["Move reference up", "↑", index === 0, () => moveReference(index, -1)],
-      ["Move reference down", "↓", index === referenceRows.length-1, () => moveReference(index, 1)],
-      ["Remove reference", "×", false, () => changeReferences("/api/references/remove", {id: reference.id})],
+    for (const [label, text, disabled, callback, about] of [
+      ["Move reference up", "↑", index === 0, () => moveReference(index, -1), "refs.up"],
+      ["Move reference down", "↓", index === referenceRows.length-1, () => moveReference(index, 1), "refs.down"],
+      ["Remove reference", "×", false, () => changeReferences("/api/references/remove", {id: reference.id}), "refs.remove"],
     ]) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "icon-btn";
       button.setAttribute("aria-label", label + ": " + reference.name);
       button.textContent = text;
+      button.title = TIPS.controls[about] || "";
       button.disabled = disabled;
       button.onclick = callback;
       row.append(button);
@@ -894,10 +909,10 @@ function fillSelect(){const s=$("model");let opts;
 function setupCard(s){const c=$("setup");let html="";const dl=models.find(r=>(r.statusText||"").startsWith("Downloading"))||models.find(r=>r.statusText==="Waiting");
   if(mode==="select"||(mode==="remove"&&$("model").value===TEXTURE_REMOVAL))html="";
   else if(!s.comfyReady&&s.remoteFibo)html=`<div class="head">${svg("warn",C.warn)}<span class="t">${esc(s.backendName)} is unavailable</span></div><div class="small">${esc(s.comfyProblem||"Start ComfyUI on the selected computer, then press Check.")}</div>`;
-  else if(!s.comfyReady)html=`<div class="head">${svg("warn",C.warn)}<span class="t">AI engine not found</span></div><div class="small">OpenFill runs on ComfyUI. Choose its folder (the one with main.py), or install it.</div><div style="display:flex;gap:8px"><button class="btn accent flex" id="setup-folder">Choose folder</button><button class="btn flex" id="setup-help">How to install</button></div>`;
+  else if(!s.comfyReady)html=`<div class="head">${svg("warn",C.warn)}<span class="t">AI engine not found</span></div><div class="small">OpenFill runs on ComfyUI. Choose its folder (the one with main.py), or install it.</div><div style="display:flex;gap:8px"><button class="btn accent flex" id="setup-folder" data-tip="setup.folder">Choose folder</button><button class="btn flex" id="setup-help" data-tip="setup.help">How to install</button></div>`;
   else if(dl){const pct=dl.statusText.startsWith("Downloading")?parseInt(dl.statusText.split(" ").pop()):0;html=`<div class="head">${svg("download",C.accent)}<span class="t">Downloading ${esc(short(dl.name))}</span><span class="r">${pct}%</span></div><div class="bar"><i style="width:${pct}%"></i></div><div class="small">You can keep working.</div>`}
-  else if(models.length&&!models.some(r=>r.installed&&r.runnable&&(r.capabilities||[]).includes("fill")))html=`<div class="head">${svg("warn",C.warn)}<span class="t">No models installed</span></div><div class="small">Install at least one model to start. LaMa and DreamShaper 8 (2.2 GB) cover every tool.</div><div style="display:flex"><button class="btn accent flex" id="setup-models">Open model manager</button></div>`;
-  if(c.dataset.html!==html){c.dataset.html=html;c.innerHTML=html;c.hidden=!html;
+  else if(models.length&&!models.some(r=>r.installed&&r.runnable&&(r.capabilities||[]).includes("fill")))html=`<div class="head">${svg("warn",C.warn)}<span class="t">No models installed</span></div><div class="small">Install at least one model to start. LaMa and DreamShaper 8 (2.2 GB) cover every tool.</div><div style="display:flex"><button class="btn accent flex" id="setup-models" data-tip="setup.models">Open model manager</button></div>`;
+  if(c.dataset.html!==html){c.dataset.html=html;c.innerHTML=html;c.hidden=!html;applyTips(c);
     if($("setup-folder"))$("setup-folder").onclick=()=>{openSection("engine");$("s-comfy_dir").focus()};if($("setup-help"))$("setup-help").onclick=()=>window.open("https://github.com/beckettharriman/openfill/blob/main/docs/install.md#openfill-for-photocraft");if($("setup-models"))$("setup-models").onclick=()=>openSection("models")}}
 
 function fmt(s){s=Math.round(s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
@@ -981,7 +996,7 @@ $("find-servers").onclick=async()=>{
       line.append(label);
       if(!server.saved){
         const button=document.createElement("button");
-        button.className="btn";button.textContent="Add";button.style.marginLeft="8px";
+        button.className="btn";button.textContent="Add";button.style.marginLeft="8px";button.title=TIPS.controls["servers.found"]||"";
         button.onclick=()=>showServerForm(server.address,server.name);
         line.append(button);
       }
@@ -1093,18 +1108,18 @@ function detail(r){if(r.template==="h3_image_edit")return "Six steps · instruct
   if(!caps.length||r.runnable===false)what=r.neededBy||"Needed by other models";return[what,r.size].filter(Boolean).join(" · ")}
 function mnote(t,kind){const n=$("mnote");n.hidden=!t;n.textContent=t||"";n.className="note "+(kind||"bad")}
 async function act(fn){try{await fn();mnote("")}catch(e){mnote(e.message,"bad")}loadModels()}
-async function loadModels(){const requested=mode;let m;try{m=await get("/api/models?mode="+requested)}catch(e){return}if(mode!==requested||(m.source||"")!==backendSource)return;inventoryReady=true;models=m.rows||[];removalScenes=m.removalScenes||[];$("hw").textContent=m.hardware||m.error||"";
-  fillSelect();if(layout.collapsed.includes("models"))return;
+async function loadModels(){const requested=mode;let m;try{m=await get("/api/models?mode="+requested)}catch(e){return}if(mode!==requested||(m.source||"")!==backendSource)return;inventoryReady=true;models=m.rows||[];removalScenes=m.removalScenes||[];modelTips=m.tips||{};$("hw").textContent=m.hardware||m.error||"";
+  fillSelect();tipSelects();if(layout.collapsed.includes("models"))return;
   const inst=models.filter(r=>r.installed).sort((a,b)=>(!a.runnable)-(!b.runnable)||(!a.active)-(!b.active)||a.name.localeCompare(b.name));
   const avail=models.filter(r=>!r.installed&&r.runnable).sort((a,b)=>a.name.localeCompare(b.name));
   const row=(r)=>{const st=r.statusText||"";let right="",extra="";const busyRow=/^(Downloading|Waiting)/.test(st);
-    if(r.installed){if((r.missing_models||[]).length)right=`<button class="btn" data-get="${r.id}">Download</button>`;else if(/^(Removing|Installing|Working)/.test(st))right=`<span class="pct">${esc(st)}</span>`;else if(r.runnable&&!r.remote)right=`<button class="icon-btn" data-remove="${r.id}" aria-label="Uninstall ${esc(r.name)}">${svg("trash","currentColor")}</button>`}
-    else if(busyRow){const pct=st.startsWith("Downloading")?st.split(" ").pop():"Waiting";right=`<span class="pct">${pct}</span><button class="icon-btn" data-stop="${r.id}" aria-label="Stop downloading">${svg("close","currentColor")}</button>`;if(st.startsWith("Downloading"))extra=`<div class="bar"><i style="width:${parseInt(pct)||0}%"></i></div>`}
-    else right=`<button class="btn" data-get="${r.id}">${r.partial?"Resume":"Download"}</button>`;
-    if(r.installed&&r.runnable)right='<label class="model-visible"><input type="checkbox" data-visible="'+esc(r.id)+'" aria-label="Show '+esc(r.name)+' in model dropdown" '+(r.visible!==false?'checked':'')+'>Show</label>'+right;
+    if(r.installed){if((r.missing_models||[]).length)right=`<button class="btn" data-get="${r.id}" data-tip="models.download">Download</button>`;else if(/^(Removing|Installing|Working)/.test(st))right=`<span class="pct">${esc(st)}</span>`;else if(r.runnable&&!r.remote)right=`<button class="icon-btn" data-remove="${r.id}" data-tip="models.uninstall" aria-label="Uninstall ${esc(r.name)}">${svg("trash","currentColor")}</button>`}
+    else if(busyRow){const pct=st.startsWith("Downloading")?st.split(" ").pop():"Waiting";right=`<span class="pct">${pct}</span><button class="icon-btn" data-stop="${r.id}" data-tip="models.stop" aria-label="Stop downloading">${svg("close","currentColor")}</button>`;if(st.startsWith("Downloading"))extra=`<div class="bar"><i style="width:${parseInt(pct)||0}%"></i></div>`}
+    else right=`<button class="btn" data-get="${r.id}" data-tip="models.download">${r.partial?"Resume":"Download"}</button>`;
+    if(r.installed&&r.runnable)right='<label class="model-visible" data-tip="models.visible"><input type="checkbox" data-visible="'+esc(r.id)+'" aria-label="Show '+esc(r.name)+' in model dropdown" '+(r.visible!==false?'checked':'')+'>Show</label>'+right;
     const det=r.installed&&!r.runnable?[r.neededBy||"Needed by other models",r.size].join(" · "):detail(r)+((r.missing_models||[]).length?" · Needs one more download":"");
-    return `<div class="mrow"><div class="top"><div class="names"><div>${esc(r.name)}</div><div class="small">${esc(det)}</div></div>${right}</div>${extra}</div>`};
-  $("installed").innerHTML=inst.map(row).join("");$("inst-box").hidden=!inst.length;$("available").innerHTML=avail.map(row).join("");$("avail-box").hidden=!avail.length;
+    return `<div class="mrow"><div class="top"><div class="names" title="${esc(modelTips[r.id]||"")}"><div>${esc(r.name)}</div><div class="small">${esc(det)}</div></div>${right}</div>${extra}</div>`};
+  $("installed").innerHTML=inst.map(row).join("");$("inst-box").hidden=!inst.length;$("available").innerHTML=avail.map(row).join("");$("avail-box").hidden=!avail.length;applyTips($("sec-models"));
   document.querySelectorAll("[data-visible]").forEach(box=>box.onchange=()=>{box.disabled=true;act(()=>post("/api/models/visibility",{id:box.dataset.visible,visible:box.checked}))});
   document.querySelectorAll("[data-get]").forEach(b=>b.onclick=()=>act(()=>post("/api/models/download",{id:b.dataset.get})));
   document.querySelectorAll("[data-stop]").forEach(b=>b.onclick=()=>act(()=>post("/api/models/stop",{id:b.dataset.stop})));

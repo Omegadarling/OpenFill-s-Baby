@@ -623,11 +623,22 @@ class Seg(tk.Canvas):
         if self.command:
             self.command(key)
 
+    def key_at(self, x: int) -> Any:
+        """The key of the segment at ``x``, or None between and outside them."""
+        for (key, _label), (left, w) in zip(self.items, self._cells, strict=False):
+            if left - 1 <= x < left + w + 1:
+                return key
+        return None
+
+    def set_tips(self, tips: Callable[[Any], str]) -> None:
+        """Show ``tips(key)`` over each segment."""
+        self.tips = tips
+        tip(self, lambda event: tips(self.key_at(event.x)) if event is not None else "")
+
     def _click(self, event) -> None:
-        for (key, _label), (x, w) in zip(self.items, self._cells, strict=False):
-            if x - 1 <= event.x < x + w + 1:
-                self.invoke(key)
-                return
+        key = self.key_at(event.x)
+        if key is not None:
+            self.invoke(key)
 
 
 class Button(tk.Canvas):
@@ -1064,8 +1075,21 @@ class Select(tk.Canvas):
         self.value = ""
         self.popdown: Popdown | None = None
         self._native_menu: tk.Menu | None = None
+        self.item_tip: Callable[[str], str] | None = None
         self.bind("<Button-1>", lambda _e: self.toggle())
         self._draw()
+
+    def set_tips(self, about: str | Callable[[], str], item: Callable[[str], str] | None = None) -> None:
+        """``about`` over the closed select, followed by ``item(value)`` for the current choice;
+        ``item(row)`` beside each row of the open list."""
+        self.item_tip = item
+
+        def text(_event) -> str:
+            current = item(self.value) if item else ""
+            head = about() if callable(about) else about
+            return "\n\n".join(part for part in (head, current) if part)
+
+        tip(self, text)
 
     def _draw(self) -> None:
         self.delete("all")
@@ -1241,6 +1265,18 @@ class Popdown(tk.Toplevel):
         if index != self.hover:
             self.hover = index
             self._draw()
+            self._row_tip()
+
+    def _row_tip(self) -> None:
+        """The hovered row's tip, beside the list so it covers no other row."""
+        tips, text = _tips(self), ""
+        if self.select.item_tip and 0 <= self.hover < len(self.rows):
+            text = self.select.item_tip(self.rows[self.hover])
+        if not text:
+            tips.hide()
+            return
+        x, y = self.winfo_rootx(), self.winfo_rooty() + self._tops[self.hover]
+        tips.wait(self, text, lambda: (x + self.w + 6, y), lambda width: (x - width - 6, y))
 
     def _motion(self, event) -> None:
         self._set_hover(self._row_at(event.y))
@@ -1261,6 +1297,7 @@ class Popdown(tk.Toplevel):
                 return  # a click on the select itself only closes it
 
     def destroy_quietly(self) -> None:
+        _tips(self).hide()
         try:
             self.grab_release()
         except tk.TclError:
@@ -1269,6 +1306,131 @@ class Popdown(tk.Toplevel):
             self.destroy()
         except tk.TclError:
             pass
+
+
+# ---- tooltips ------------------------------------------------------------------------------------
+
+TIP_DELAY = 500  # ms the pointer rests before a tip appears
+TIP_WRAP = 300  # px
+TIP_BG = "#101113"
+
+
+class Tips:
+    """The interpreter's one tooltip: a small window that never takes focus or the pointer."""
+
+    def __init__(self, root: tk.Misc) -> None:
+        self.root = root
+        self.window: tk.Toplevel | None = None
+        self.owner: tk.Misc | None = None
+        self.text = ""
+        self._timer: str | None = None
+
+    def wait(self, owner: tk.Misc, text: str, place: Callable[[], tuple[int, int]] | None = None,
+             flipped: Callable[[int], tuple[int, int]] | None = None) -> None:
+        """Show ``text`` for ``owner`` once the pointer has rested. ``place()`` gives the top-left
+        corner (by default just below the pointer); ``flipped(width)`` is used instead when the
+        tip would leave the screen on the right."""
+        if owner is self.owner and text == self.text:
+            return
+        self.hide()
+        if not text:
+            return
+        self.owner, self.text = owner, text
+        self._timer = self.root.after(TIP_DELAY, lambda: self.show(place, flipped))
+
+    def show(self, place=None, flipped=None) -> None:
+        self._timer = None
+        try:
+            window = self.window = tk.Toplevel(self.root, bg=LINE)
+            window.withdraw()
+            window.tk.call("wm", "overrideredirect", window._w, True)
+            try:
+                window.attributes("-topmost", True)
+            except tk.TclError:
+                pass
+            tk.Label(window, text=self.text, justify="left", wraplength=TIP_WRAP, bg=TIP_BG, fg=TEXT,
+                     font=fonts(self.root).small, padx=8, pady=6, bd=0).pack(padx=1, pady=1)
+            window.update_idletasks()
+            width, height = window.winfo_reqwidth(), window.winfo_reqheight()
+            if place is None:
+                px, py = self.root.winfo_pointerxy()
+                x, y = px + 12, py + 20
+            else:
+                x, y = place()
+            left, top = self.root.winfo_vrootx(), self.root.winfo_vrooty()
+            right = left + max(self.root.winfo_vrootwidth(), self.root.winfo_screenwidth())
+            bottom = top + max(self.root.winfo_vrootheight(), self.root.winfo_screenheight())
+            if x + width > right:
+                x = flipped(width)[0] if flipped else right - width
+            if y + height > bottom:
+                y = (self.root.winfo_pointery() - height - 12) if place is None else bottom - height
+            window.geometry(f"+{max(left, x)}+{max(top, y)}")
+            window.deiconify()
+            window.lift()
+        except tk.TclError:  # the panel is closing
+            self.hide()
+
+    def hide(self) -> None:
+        if self._timer is not None:
+            try:
+                self.root.after_cancel(self._timer)
+            except tk.TclError:
+                pass
+            self._timer = None
+        window, self.window = self.window, None
+        self.owner, self.text = None, ""
+        if window is not None:
+            try:
+                window.destroy()
+            except tk.TclError:
+                pass
+
+
+def _tips(widget: tk.Misc) -> Tips:
+    root = widget._root()
+    tips = getattr(root, "_openfill_tips", None)
+    if tips is None:
+        tips = root._openfill_tips = Tips(root)
+    return tips
+
+
+def tip(widget: tk.Misc, text: str | Callable[[Any], str]) -> None:
+    """Give ``widget`` and the widgets inside it a tooltip: a string, or a function of the pointer
+    event that returns the text for the part under the pointer ("" for none)."""
+    if not text:
+        return
+    first = not hasattr(widget, "tip_text")
+    widget.tip_text = text  # also read by ``tip_of``; setting it again replaces the text
+    if not first:
+        return
+    tips = _tips(widget)
+
+    pressed = [False]  # a click answers the question the tip was for: stay quiet until the pointer leaves
+
+    def over(event) -> None:
+        current = widget.tip_text
+        if not pressed[0]:
+            tips.wait(widget, current(event) if callable(current) else current)
+
+    def leave(_event) -> None:
+        pressed[0] = False
+        tips.hide()
+
+    def press(_event) -> None:
+        pressed[0] = True
+        tips.hide()
+
+    for target in (widget, *widget.winfo_children()):
+        target.bind("<Enter>", over, add="+")
+        target.bind("<Motion>", over, add="+")
+        target.bind("<Leave>", leave, add="+")
+        target.bind("<ButtonPress>", press, add="+")
+
+
+def tip_of(widget: tk.Misc, event: Any = None) -> str:
+    """The tip ``widget`` shows (at ``event`` for a widget whose tip depends on the pointer)."""
+    text = getattr(widget, "tip_text", "")
+    return text(event) if callable(text) else text
 
 
 # ---- borderless windows --------------------------------------------------------------------------

@@ -24,7 +24,7 @@ from openfill import catalog as cat
 from openfill.backend import describe_error
 from openfill.config import normalize_panel_layout, validate_fibo_settings
 
-from . import __version__
+from . import __version__, tips
 from .references import MAX_UPLOAD
 from .selection import saved_grow_pixels
 from .service import Service
@@ -375,7 +375,10 @@ def make_handler(api: Api) -> type[BaseHTTPRequestHandler]:
                     self._json(200, api.state(modes[0]) if modes else api.state())
                 elif path == "/api/models":
                     modes = parse_qs(urlparse(self.path).query).get("mode")
-                    self._json(200, api.models(modes[0]) if modes else api.models())
+                    data = api.models(modes[0]) if modes else api.models()
+                    self._json(200, data | {"tips": tips.model_tips(data.get("rows") or [])})
+                elif path == "/api/tips":
+                    self._json(200, tips.page())
                 elif path == "/api/sources":
                     self._json(200, api.sources())
                 elif path == "/api/settings":

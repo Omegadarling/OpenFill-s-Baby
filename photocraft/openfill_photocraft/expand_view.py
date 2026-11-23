@@ -85,6 +85,11 @@ class ExpandView(tk.Frame):
         self.canvas.bind("<Button-5>", lambda _e: self._wheel(1 / ZOOM_STEP))
         self.size = ui.small(self, "", anchor="center", justify="center")
         self.size.pack(fill="x", pady=(8, 0))
+        from .tips import CONTROLS
+
+        self.ratio_seg.set_tips(lambda key: CONTROLS["expand.ratio"] if key is not None else "")
+        self.turn_seg.set_tips(lambda key: CONTROLS["expand.turn"] if key is not None else "")
+        ui.tip(self.canvas, CONTROLS["expand.canvas"])
         self._changed()
 
     # state ---------------------------------------------------------------------------
