@@ -49,7 +49,7 @@ An existing `selection-engine.json` adds **Local WeVisOne** to the Select picker
 ### Remove an object
 
 1. Lasso the whole object, its shadow or reflection, and a narrow margin of background. Leave some unselected background for OpenFill to sample.
-2. Open **Remove**. Under **Kind of removal**, **Automatic** uses MiniMax H3 Image when it is available and visible on the selected engine. Otherwise it samples the colors, edges and texture around the selection and suggests an available **Method**. You can pick a kind of removal or choose a **Method** yourself.
+2. Open **Remove**. Under **Kind of removal**, **Automatic** makes two repairs when the selected engine offers RORem, LaMa and Qwen Image Lightning, or enough of them to make two: it runs the methods artists rated best for a selection of that size, replaces a repair that left the object in place, and names the method under each result. Without them it uses MiniMax H3 Image when that is available and visible on the engine. Otherwise it samples the colors, edges and texture around the selection and suggests an available **Method**. You can pick a kind of removal or choose a **Method** yourself.
 3. Choose **Variations** (1–5), press **Remove**, then click each result thumbnail to compare it on the canvas. You can also run another method on the same selection to add alternatives.
 4. Choose **Keep** under the result you want, or **Discard** to return to the original.
 
