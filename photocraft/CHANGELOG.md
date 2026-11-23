@@ -5,7 +5,7 @@ All notable changes to OpenFill for PhotoCraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.23.0] - 2026-11-23
 
 - **Tooltips on every control.** Rest the pointer on a button, menu, slider or field in the panel or the browser view to see what it does.
 - **Pros and cons for every model and removal method.** The Model and Method menus show, for each entry and for the current choice, what it is, what it is good at and where it falls short. Removal methods quote how they rated (1 to 5 stars) and roughly how long they take; a model that can also remove says how it rated for removal. Kind of removal entries say which method they pick. The same tips are on each row of Manage Models.
