@@ -67,6 +67,7 @@ class PCLayer:
     feather: float = 0.0
     mask: bytes | None = None
     selection: bytes | None = None  # the job's selection (canvas-sized), for a "selection" mask built later
+    label: str = ""  # the method that made it, shown with its thumbnail (removals)
 
     def get_name(self) -> str:
         return self.name

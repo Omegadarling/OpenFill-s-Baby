@@ -5,6 +5,13 @@ All notable changes to OpenFill for PhotoCraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- **Automatic Remove makes two repairs and labels them.** On a server that offers RORem, LaMa or Qwen Image Lightning, Automatic runs the methods artists rated best for a selection of that size and shows both results with the method under each thumbnail. Keep the better one. Results from a method chosen by hand are labelled too.
+- A repair that leaves the object in place is replaced by the next method, and the panel says so.
+- Keep and Discard add one line to `removal-choices.jsonl` in the profile: the methods offered and the one kept. No pixels are stored.
+- Warnings from one job no longer stay on screen during the next.
+
 ## [0.21.0] - 2026-11-16
 
 - Edit can use **MOSS AnyPaint** (MOSS-Image Base with the AnyPaint adapter) on an existing ComfyUI server that has the moss-anypaint nodes and model files. Describe the finished picture; OpenFill repaints the selection in eight steps and keeps everything outside it unchanged. It accepts no reference attachments and appears only on servers that offer every required node and file.

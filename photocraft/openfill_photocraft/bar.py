@@ -1817,7 +1817,8 @@ class Bar:
                 cell.create_image(4, 4, image=cell.thumbnail, anchor="nw")
             except Exception:  # noqa: BLE001
                 pass
-            cell.create_text(cw / 2, 92, text=str(index + 1), font=self.small, fill=DIM, tags="number")
+            caption = thumb_caption(index, getattr(layer, "label", ""), cw)
+            cell.create_text(cw / 2, 92, text=caption, font=self.small, fill=DIM, tags="number")
             cell.bind("<Button-1>", lambda _e, i=index: self.pick_variation(i))
             self.thumb_cells.append(cell)
 
@@ -1834,6 +1835,13 @@ class Bar:
         self.root.after(1000, check)
         self.root.mainloop()
         self._save_prefs()
+
+
+def thumb_caption(index: int, label: str, width: int) -> str:
+    """Under a result: its number and, for a removal, the method that made it, cut to the cell."""
+    caption = f"{index + 1} · {label}" if label else str(index + 1)
+    room = max(3, int((width - 6) / 6.5))
+    return caption if len(caption) <= room else caption[: room - 1] + "…"
 
 
 class _SegKey:

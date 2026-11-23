@@ -1317,6 +1317,8 @@ class ServiceRemoveTests(unittest.TestCase):
                 return [SimpleNamespace(name="x")]
 
         stub = SimpleNamespace(app=App(), OLD_REMOVALS=Service.OLD_REMOVALS)
+        stub._method_name = Service._method_name
+        stub._remove_with = lambda *args: Service._remove_with(stub, *args)
         image = SimpleNamespace(pending_group="g")
         layers = Service._remove(stub, image, {"removal": removal} if removal is not None else {}, 5, 2)
         self.assertEqual(len(calls), 1)  # one pass, never LaMa then a second model

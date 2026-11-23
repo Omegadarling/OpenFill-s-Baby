@@ -210,6 +210,37 @@ def rank(original: Buffer, candidates: list[Buffer], mask: bytes, removal: bool)
     return sorted(range(len(candidates)), key=lambda i: (totals[i], i))
 
 
+# Measured on 235 rated removals (2026-11-22): every result an artist marked "object still
+# there" from an instruction model scored above 0.68, every other result below 0.42.
+STILL_THERE = 0.55
+
+
+def edge_persistence(original: Buffer, candidate: Buffer, distance: list[int]) -> float | None:
+    """How much of the original's edge pattern is still inside a removal's selection: the
+    correlation (-1..1) of gradient strength before and after, away from the selection's edge.
+    A removed object leaves it near 0; one that is still there leaves it near 1. ``None`` when
+    the selection is too small to tell."""
+    width, height = original.width, original.height
+    before, _ = _grad_lap(original.luminance(), width, height)
+    after, _ = _grad_lap(candidate.luminance(), width, height)
+
+    def inside(limit: int) -> list[int]:
+        return [
+            y * width + x for y in range(1, height - 1) for x in range(1, width - 1) if distance[y * width + x] <= limit
+        ]
+
+    inner = next((found for found in (inside(-2), inside(-1), inside(0)) if len(found) >= 24), inside(0))
+    count = len(inner)
+    if count < 12:
+        return None
+    a, b = [before[i] for i in inner], [after[i] for i in inner]
+    mean_a, mean_b = sum(a) / count, sum(b) / count
+    var_a, var_b = sum((v - mean_a) ** 2 for v in a), sum((v - mean_b) ** 2 for v in b)
+    if var_a < 1e-10 or var_b < 1e-10:
+        return 0.0
+    return sum((u - mean_a) * (v - mean_b) for u, v in zip(a, b, strict=True)) / math.sqrt(var_a * var_b)
+
+
 # --------------------------------------------------------------- grain -------
 
 # Residual of a pixel against the mean of its four neighbours, for pure

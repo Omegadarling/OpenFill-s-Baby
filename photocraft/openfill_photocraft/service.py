@@ -24,11 +24,13 @@ from openfill.progress import parse_preview_frame
 from openfill.remote_models import H3_IMAGE_ID
 from openfill.supervisor import process_name
 
+from . import removal_plan
 from .bridge import PCImage, PCLayer, PhotoCraftBridge
 from .control import ControlClient, ControlError
 from .engine_routes import EngineRoutes, mode_for
 from .references import ReferenceImages
 from .removal_advice import H3_TIP, TEXTURE_REMOVAL, recommend
+from .removal_plan import AUTO_REMOVAL
 from .selection import Selection, key_for
 from .selection_advice import SelectionSampler, live_selection_key, selection_key
 
@@ -58,6 +60,8 @@ class JobState:
     local_removal: bool = False
     committing: bool = False  # the final PhotoCraft history operation cannot be cancelled halfway
     variations: list[str] = field(default_factory=list)  # names, best first
+    variation_labels: list[str] = field(default_factory=list)  # the method behind each (removals), or ""
+    stage: tuple[int, int] = (0, 1)  # which of several repairs an automatic removal is making
     shown: int = 0
     removal_summary: str = ""
     variation_set: int = 0
@@ -78,6 +82,7 @@ class JobState:
                 "previewSeq": self.preview_seq,
                 "previewRect": self.preview_rect,
                 "variations": list(self.variations),
+                "variationLabels": list(self.variation_labels),
                 "shown": self.shown,
                 "variationSet": self.variation_set,
                 "removalSummary": self.removal_summary,
@@ -100,7 +105,11 @@ class WebRunner:
 
     def _progress(self, fraction: float, text: str) -> None:
         with self.state.lock:
-            self.state.fraction, self.state.text = max(0.0, min(1.0, float(fraction))), str(text)
+            index, count = self.state.stage
+            fraction = max(0.0, min(1.0, float(fraction)))
+            if count > 1:
+                fraction, text = (index + fraction) / count, f"Repair {index + 1} of {count}: {text}"
+            self.state.fraction, self.state.text = fraction, str(text)
 
     def _preview(self, payload: bytes) -> None:
         frame = parse_preview_frame(payload)
@@ -287,6 +296,19 @@ class Service:
             }
         snapshot = self.photocraft()
         app = self.app_for("remove")
+        first = removal_plan.first_method(set(available))
+        if first is not None:
+            key = snapshot.get("selectionKey") or ""
+            existing = app.settings.remote_fibo
+            managed = None if existing else next((i for i in ("lama-big", "mat-places512") if i in available), None)
+            return {
+                "status": "ready" if key else "empty",
+                "key": key,
+                "method": AUTO_REMOVAL,
+                "displayMethod": "default" if first == managed else first,
+                "source": app.settings.fibo_source if existing else "",
+                "tip": removal_plan.TIP if key else "Select the object and any shadow you want removed.",
+            }
         if app.settings.remote_fibo and H3_IMAGE_ID in available and H3_IMAGE_ID not in app.settings.hidden_models:
             key = snapshot.get("selectionKey") or ""
             return {
@@ -420,10 +442,11 @@ class Service:
             if kind != "fill":
                 raise RuntimeError("Choose Select, Edit, or Remove for this ComfyUI source.")
             if removing and params.get("removal", "default") in ("", "default", None):
+                shown = {entry.id for entry in app.installed_models("remove")} - set(app.settings.hidden_models)
                 params["removal"] = TEXTURE_REMOVAL
-                if H3_IMAGE_ID not in app.settings.hidden_models and any(
-                    entry.id == H3_IMAGE_ID for entry in app.installed_models("remove")
-                ):
+                if removal_plan.first_method(shown) is not None:
+                    params["removal"] = AUTO_REMOVAL  # the rated plan, as the panels' Automatic uses it
+                elif H3_IMAGE_ID in shown:
                     params["removal"] = H3_IMAGE_ID
             if not removing and not str(params.get("prompt", "")).strip():
                 raise RuntimeError("Describe the desired edit or selected content.")
@@ -485,6 +508,8 @@ class Service:
             }.get(kind, kind)
             self.state.model = "WeVisOne-VL" if kind == "select" and params.get("action") != "grow" else ""
             self.state.removal_summary = ""
+            self.state.notices = []  # a note about one job says nothing about the next
+            self.state.stage = (0, 1)
             self.state.local_removal = local_removal
             self.state.fraction, self.state.started, self.state.finished = 0.0, time.time(), 0.0
             self.state.cancel_requested = False
@@ -580,7 +605,10 @@ class Service:
             model = str(p.get("model") or "active")
             if kind == "fill" and p.get("remove"):
                 layers = self._remove(image, p, seed, variations)
-                if 0 < len(layers) < variations:
+                if p.get("removal") == AUTO_REMOVAL:
+                    with self.state.lock:
+                        self.state.removal_summary = _joined([layer.label for layer in layers])
+                elif 0 < len(layers) < variations:
                     label = "repair" if len(layers) == 1 else "repairs"
                     with self.state.lock:
                         self.state.removal_summary = (
@@ -651,11 +679,17 @@ class Service:
             self.image = image
             self.layers = previous + list(layers or [])
             self._choice_kind = kind if self.layers else ""
+            if kind == "fill" and p.get("remove") and not previous:
+                self._choice_info = {
+                    "automatic": p.get("removal") == AUTO_REMOVAL,
+                    "share": getattr(self, "_removal_share", None),
+                }
             with self.state.lock:
                 self.state.state = "done"
                 self.state.fraction = 1.0
                 self.state.text = self.state.message = done_text
                 self.state.variations = [layer.name for layer in self.layers]
+                self.state.variation_labels = [layer.label for layer in self.layers]
                 if not previous:
                     self.state.variation_set += 1
                     self.state.shown = 0
@@ -694,6 +728,13 @@ class Service:
         """Stage texture or model-based removal through the usual variation and commit path."""
         app = getattr(self, "_job_app", self.app)
         how = str(p.get("removal") or "default")
+        self._removal_share = None
+        if how == AUTO_REMOVAL:
+            return self._remove_auto(image, app, seed, variations)
+        return self._remove_with(image, app, how, seed, variations)
+
+    def _remove_with(self, image: PCImage, app, how: str, seed: int, variations: int) -> list:
+        """One method's repairs, staged and labelled with the method for the picker."""
         if how == TEXTURE_REMOVAL:
             runner = WebRunner(app, "Object Removal", TEXTURE_LABEL)
             layers = runner.run(
@@ -702,16 +743,87 @@ class Service:
                 )
             )
             runner.done("Background repaired.")
-            return layers
-        if how.startswith("refine:") or how == "default":
-            how = "active"
-        how = self.OLD_REMOVALS.get(how, how)
-        layers = app.generative_fill(image, "", "", variations, 1.0, seed, how, remove=True, as_picked=how != "active")
-        for index, layer in enumerate(layers):
-            layer.name = "Object Removal" if len(layers) == 1 else f"Object Removal ({index + 1})"
-        if image.pending_group:
-            image.pending_group = "Object Removal"
+        else:
+            if how.startswith("refine:") or how == "default":
+                how = "active"
+            how = self.OLD_REMOVALS.get(how, how)
+            layers = app.generative_fill(
+                image, "", "", variations, 1.0, seed, how, remove=True, as_picked=how != "active"
+            )
+            for index, layer in enumerate(layers):
+                layer.name = "Object Removal" if len(layers) == 1 else f"Object Removal ({index + 1})"
+            if image.pending_group:
+                image.pending_group = "Object Removal"
+        label = removal_plan.short_label(how, self._method_name(app, how))
+        for layer in layers:
+            layer.label = label
         return layers
+
+    @staticmethod
+    def _method_name(app, how: str) -> str:
+        try:
+            return next((entry.name for entry in app.installed_models("remove") if entry.id == how), "")
+        except Exception:  # noqa: BLE001 - a label is never worth failing a finished repair
+            return ""
+
+    def _remove_auto(self, image: PCImage, app, seed: int, variations: int) -> list:
+        """Two repairs from the methods that rated best for a selection this size. A repair that
+        leaves the object in place, or a method that fails, gives way to the next one. Nothing
+        reaches the document until every repair is staged, so each method sees the original picture."""
+        from .removal_check import object_remains
+
+        visible, selection = self.bridge._snapshot(image)
+        if selection is None or selection.getbbox() is None:
+            raise RuntimeError(REMOVE_SELECTION)
+        area = sum(level * count for level, count in enumerate(selection.histogram())) / 255
+        share = area / (selection.width * selection.height)
+        self._removal_share = round(share, 5)
+        hidden = set(app.settings.hidden_models)
+        available = {entry.id for entry in app.installed_models("remove") if entry.id not in hidden}
+        wanted = max(removal_plan.RESULTS, variations)
+        kept: list[PCLayer] = []
+        doubtful: list[PCLayer] = []
+        notes: list[str] = []
+        failure: BaseException | None = None
+        for method, count in removal_plan.steps(share, available):
+            if len(kept) >= wanted:
+                break
+            label = removal_plan.short_label(method, self._method_name(app, method))
+            with self.state.lock:
+                self.state.stage = (len(kept), wanted)
+            try:
+                staged = self._remove_with(image, app, method, seed, min(count, wanted - len(kept)))
+            except GenerationCancelled:
+                raise
+            except Exception as err:  # the next method still gets its turn
+                if self.state.cancel_requested:
+                    raise
+                staged, failure = [], failure or err
+                notes.append(
+                    f"{label} could not make a repair ({describe_error(err)}). Automatic went on to the next method."
+                )
+            image.pending, image.pending_group = [], ""  # held here until every repair is ready
+            left = [layer for layer in staged if object_remains(visible, selection, layer)]
+            if left:
+                notes.append(f"{label} left the object in place, so Automatic went on to the next method.")
+            doubtful.extend(left)
+            kept.extend(layer for layer in staged if layer not in left)
+        if not kept and doubtful:
+            kept = doubtful[:wanted]
+            notes.append("Every method left part of the object. Try a wider selection, or pick a Method.")
+        if not kept:
+            # Nothing to show: the first method's own reason (no selection, no background left) says why.
+            raise failure or RuntimeError("No removal method made a repair. Choose a Method and try again.")
+        for note in notes:
+            self._notice(note)
+        image.layers = [layer for layer in image.layers if layer in kept or layer not in doubtful]
+        for index, layer in enumerate(kept):
+            layer.name = "Object Removal" if len(kept) == 1 else f"Object Removal ({index + 1})"
+            layer.visible = index == 0
+        image.pending, image.pending_group = kept, "Object Removal" if len(kept) > 1 else ""
+        with self.state.lock:
+            self.state.stage = (0, 1)
+        return kept
 
     # ComfyUI ----------------------------------------------------------------------------
 
@@ -874,6 +986,7 @@ class Service:
         self._expected_revision = None
         with self.state.lock:
             self.state.variations = []
+            self.state.variation_labels = []
             self.state.shown = 0
             self.state.variation_set += 1
 
@@ -883,6 +996,8 @@ class Service:
         if not self.image or not self.layers:
             return
         if which == "all" or not self.bridge.has_image(self.image):
+            if which == "all":
+                self._log_choice(which)
             self._clear_choices()
             return
         shown = self.state.shown
@@ -914,7 +1029,30 @@ class Service:
             for i, layer in enumerate(self.layers):
                 if layer.id in live_ids and (which == "none" or i != shown):
                     self.client.run("layer.delete", layer=layer.id)
+        self._log_choice(which)
         self._clear_choices()
+
+    def _log_choice(self, which: str) -> None:
+        """One line per removal the artist kept or discarded: the methods offered and the one kept.
+        It stays in this profile and holds no pixels; the ratings behind Automatic can grow from it."""
+        labels = [layer.label for layer in self.layers]
+        if self._choice_kind != "fill" or not any(labels):
+            return
+        info = getattr(self, "_choice_info", None) or {}
+        shown = self.state.shown
+        kept = labels[shown] if which == "selected" and 0 <= shown < len(labels) else which
+        row = {
+            "t": round(time.time()),
+            "kept": kept,
+            "offered": labels,
+            "automatic": bool(info.get("automatic")),
+            "share": info.get("share"),
+        }
+        try:
+            with (self.bridge.profile / "removal-choices.jsonl").open("a", encoding="utf-8") as log:
+                log.write(json.dumps(row) + "\n")
+        except (OSError, AttributeError, TypeError):
+            pass  # a note for later tuning; never worth failing a Keep
 
     def _remember_history(self) -> None:
         """After a Keep that failed: the document's history as it is now, so Keep can be tried
@@ -938,6 +1076,15 @@ class Service:
             )
         except ControlError:
             return False
+
+
+def _joined(labels: list[str]) -> str:
+    """The panel's done line after an automatic removal: which methods made the repairs."""
+    names = [label for label in labels if label]
+    if len(names) < 2:
+        return ""
+    count = {2: "Two", 3: "Three", 4: "Four", 5: "Five"}.get(len(names), str(len(names)))
+    return f"{count} repairs: {', '.join(names[:-1])} and {names[-1]}. Keep the better one."
 
 
 SETUP_STEPS = {
