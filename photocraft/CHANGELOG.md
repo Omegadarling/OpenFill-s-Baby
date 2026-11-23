@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Automatic Remove makes two repairs and labels them.** On a server that offers RORem, LaMa or Qwen Image Lightning, Automatic runs the methods artists rated best for a selection of that size and shows both results with the method under each thumbnail. Keep the better one. Results from a method chosen by hand are labelled too.
 - A repair that leaves the object in place is replaced by the next method, and the panel says so.
+- The order comes from ratings of 54 pictures: a selection covering 1-5% of the picture tries Qwen first and shows its repair first, with RORem beside it; smaller and larger selections get two RORem variations.
 - Keep and Discard add one line to `removal-choices.jsonl` in the profile: the methods offered and the one kept. No pixels are stored.
 - Warnings from one job no longer stay on screen during the next.
 

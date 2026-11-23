@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "photocraft"), str(ROOT / "gimp-openfill")]
 
-from openfill_photocraft import removal_plan  # noqa: E402
+from openfill_photocraft import removal_plan, removal_table  # noqa: E402
 from openfill_photocraft.bridge import PCImage, PCLayer  # noqa: E402
 from openfill_photocraft.removal_check import object_remains, persistence  # noqa: E402
 from openfill_photocraft.removal_plan import AUTO_REMOVAL  # noqa: E402
@@ -25,6 +25,12 @@ from openfill import quality  # noqa: E402
 from openfill.geometry import Rect  # noqa: E402
 from openfill.remote_models import H3_IMAGE_ID, LAMA_ID, QWEN21_LIGHTNING_ID, ROREM_ID  # noqa: E402
 
+# The cascade is tested on a fixed order, so the tests hold when new ratings rewrite ``removal_table``.
+TABLE = (
+    (0.01, (("rorem", 1), ("lama", 1), ("qwen", 1))),
+    (0.05, (("rorem", 1), ("qwen", 1), ("lama", 1))),
+    (1.01, (("rorem", 2), ("qwen", 1), ("lama", 1))),
+)
 SIZE = (240, 200)
 HOLE = (100, 80, 140, 120)  # 3.5% of the picture: a mid-sized selection
 
@@ -103,9 +109,16 @@ class PlanTests(unittest.TestCase):
         self.assertIsNone(removal_plan.first_method(set()))
         self.assertEqual(removal_plan.first_method(self.everything), removal_plan.steps(0.03, self.everything)[0][0])
 
+    def test_the_first_method_is_the_one_the_table_names_first_for_a_mid_sized_selection(self):
+        for family, method in (("rorem", ROREM_ID), ("qwen", QWEN21_LIGHTNING_ID)):
+            table = ((0.01, TABLE[0][1]), (0.05, ((family, 2), ("lama", 1), ("qwen", 1), ("rorem", 1))), (1.01, TABLE[2][1]))
+            with patch.object(removal_table, "SIZES", table):
+                self.assertEqual(removal_plan.first_method(self.everything), method)
+                self.assertEqual(removal_plan.steps(0.03, self.everything)[0], (method, 2))
+
     def test_a_managed_install_resolves_its_own_ids(self):
         order = removal_plan.steps(0.03, {"rorem-sdxl", "lama-big"})
-        self.assertEqual(order[0][0], "rorem-sdxl")
+        self.assertEqual({method for method, _count in order}, {"rorem-sdxl", "lama-big"})
         self.assertEqual(removal_plan.short_label("lama-big"), "LaMa")
         self.assertEqual(removal_plan.short_label("something-new", "Something New"), "Something New")
 
@@ -167,6 +180,9 @@ class AutomaticTests(unittest.TestCase):
         self.addCleanup(self.folder.cleanup)
         self.profile = Path(self.folder.name)
         self.picture, self.selection = scene()
+        pinned = patch.object(removal_table, "SIZES", TABLE)
+        pinned.start()
+        self.addCleanup(pinned.stop)
 
     def run_auto(self, svc, variations=1):
         image = PCImage(svc.bridge, "picture.png", 0)
