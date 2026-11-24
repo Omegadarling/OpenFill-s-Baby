@@ -5,7 +5,7 @@ All notable changes to OpenFill for PhotoCraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.24.0] - 2026-11-24
 
 - Edit and Remove can use **FLUX 3 Image Klein** (NVFP4, 16 steps) on a ComfyUI server that has its model files in a `FLUX-3-Image-Klein` folder. The selection is greyed in the picture the model sees. It edits one picture at a time, without reference attachments. Its FLUX Kommunity License limits commercial output to companies under US$5M annual revenue.
 - In Remove, FLUX 3 fills the selection while the original surroundings stay fixed, so the repair matches them instead of leaving a lighter or darker outline. Rated on 54 pictures it scored 3.4 stars, level with RORem and best on selections covering 1 to 5% of the picture; it takes about 28 s.
