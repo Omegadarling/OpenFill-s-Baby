@@ -1251,6 +1251,8 @@ class App:
             raise
         if boundary_strength:
             self._match_fibo_boundary(image, layers, ctx, image_rgba, mask_raw, boundary_strength)
+        if flux3_removal and self.settings.seam_correction:
+            self._match_removal_edge(image, layers, ctx, image_rgba, mask_raw)
         if self.settings.seam_correction and not model.prompt_free and not selection_edit:
             self._correct_seams(image, layers, ctx, image_rgba, mask_raw, layer_grow)
         if self.settings.grain_match and not model.prompt_free and not selection_edit:
@@ -1279,6 +1281,30 @@ class App:
         except Exception as err:
             # A cosmetic failure must not lose a successful generated layer.
             self.log.warning("fill: boundary color matching skipped: %s", err)
+
+    def _match_removal_edge(self, image, layers: list, ctx: Rect, image_rgba: bytes, mask_raw: bytes) -> None:
+        """Remove the lighter or tinted patch a latent-inpainting removal can leave: match the fill to the
+        original across the selection edge (``quality.edge_field``). Cosmetic: any failure keeps the layer."""
+        try:
+            started = time.monotonic()
+            image.undo_group_start()
+            try:
+                for index, layer in enumerate(layers):
+                    if (layer.get_width(), layer.get_height()) != (ctx.width, ctx.height):
+                        continue
+                    pixels = self.io.layer_rgba(layer)
+                    field = quality.edge_field(ctx.width, ctx.height, image_rgba, pixels, mask_raw, 4)
+                    if field is None:
+                        self.log.info("fill: layer %d matches its surroundings; no edge correction", index + 1)
+                        continue
+                    largest = max(max(abs(v) for v in cell) for cell in field.offsets)
+                    self.io.set_layer_rgba(layer, quality.apply_seam_field(pixels, ctx.width, ctx.height, 4, field))
+                    self.log.info("fill: edge matched on layer %d (largest offset %.1f levels)", index + 1, largest)
+            finally:
+                image.undo_group_end()
+            self.log.info("fill: edge matching in %.2f s", time.monotonic() - started)
+        except Exception as err:  # noqa: BLE001 - cosmetic; never lose the result
+            self.log.warning("fill: edge matching skipped: %s", err)
 
     def _correct_seams(
         self,

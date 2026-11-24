@@ -482,6 +482,128 @@ def seam_field(
     return SeamField(gw, gh, step * cell, tuple(offsets))
 
 
+# A removal by latent inpainting keeps the exterior as it was, so the drift is not outside the selection
+# but between the fill and its surroundings: a model can paint the hole a few levels lighter or warmer
+# than the surface around it (a visible patch on flat walls and illustrations). ``edge_field`` compares
+# the original just outside the edge with the fill just inside it, cell by cell, assuming the background
+# continues across the edge as a removal intends. Use it for removals only, never for edits.
+# The drift is strongest next to the edge: on a large selection over a vignette, pushing the edge offset
+# deep inside darkened a centre that was right and drew the removed figure as a dark ghost. So the
+# correction is full near the edge and fades out further in; small selections are covered whole.
+EDGE_MIN_CELL = (
+    32  # full-size pixels per cell at least: larger than a brick or a board, so both sides sample the same texture
+)
+EDGE_CONSISTENCY = 12  # cells further than this from the edge-wide median offset see content, not drift
+EDGE_FULL = 32  # full-size pixels inside the edge that get the whole correction
+EDGE_FADE = 64  # then the correction fades to nothing over this many pixels
+EDGE_GRID = 24  # full-size pixels between the field's nodes: fine enough for a smooth fade
+
+
+def edge_field(
+    width: int,
+    height: int,
+    original: bytes,
+    layer: bytes,
+    mask: bytes,
+    channels: int = 4,
+    band: int = 24,
+    side: int = SEAM_SIDE,
+) -> SeamField | None:
+    """Offsets that make a removal's fill in ``layer`` meet ``original`` across the selection edge, or None.
+
+    Per edge cell: the median of ``original`` in a band just outside the selection minus the median of
+    ``layer`` in a band just inside it (``band`` full-size pixels each). Cells above ``SEAM_MAX_OFFSET``
+    or far from the edge-wide median are content and left out. The rest are interpolated over the
+    selection at full strength within ``EDGE_FULL`` pixels of the edge, fading out over ``EDGE_FADE``.
+    """
+    step = max(1, math.ceil(max(width, height) / side))
+    sw, sh = len(range(0, width, step)), len(range(0, height, step))
+    colours = min(3, channels)
+
+    def small(data: bytes, ch: int) -> list[list[bytes]]:
+        rows = []
+        stride = width * ch
+        for y in range(0, height, step):
+            row = data[y * stride : (y + 1) * stride]
+            rows.append([row[c::ch][::step] for c in range(ch)])
+        return rows
+
+    so, sl, sm = small(original, channels), small(layer, channels), small(mask, 1)
+    dist = signed_distance(sw, sh, b"".join(r[0] for r in sm))
+    reach = max(2, round(band / step))
+    cell = max(SEAM_CELL, math.ceil(EDGE_MIN_CELL / step))
+    gw, gh = math.ceil(sw / cell), math.ceil(sh / cell)
+    outer: dict[int, list[list[int]]] = {}
+    inner: dict[int, list[list[int]]] = {}
+    for y in range(sh):
+        for x in range(sw):
+            d = dist[y * sw + x]
+            if 1 < d <= reach:
+                side_samples, source = outer, so
+            elif -reach <= d < -1:
+                side_samples, source = inner, sl
+            else:
+                continue
+            per = side_samples.setdefault((y // cell) * gw + x // cell, [[] for _ in range(colours)])
+            for c in range(colours):
+                per[c].append(source[y][c][x])
+
+    # Each cell pools its 3 x 3 neighbourhood, so an edge that runs along a cell boundary (outer band in
+    # one cell, inner band in the next) is still measured.
+    def pooled(samples: dict[int, list[list[int]]], key: int) -> list[list[int]]:
+        cx, cy = key % gw, key // gw
+        out = [[] for _ in range(colours)]
+        for ny in range(max(0, cy - 1), min(gh, cy + 2)):
+            for nx in range(max(0, cx - 1), min(gw, cx + 2)):
+                for c, values in enumerate(samples.get(ny * gw + nx, ())):
+                    out[c].extend(values)
+        return out
+
+    known: list[tuple[float, float, tuple[float, ...]]] = []
+    for key in outer.keys() | inner.keys():
+        out_samples, in_samples = pooled(outer, key), pooled(inner, key)
+        if len(out_samples[0]) < 4 or len(in_samples[0]) < 4:
+            continue
+        meds = tuple(_median(out_samples[c]) - _median(in_samples[c]) for c in range(colours))
+        if max(abs(m) for m in meds) <= SEAM_MAX_OFFSET:
+            known.append((key % gw + 0.5, key // gw + 0.5, meds))
+    if not known:
+        return None
+    centre = tuple(_median([k[2][c] for k in known]) for c in range(colours))
+    known = [k for k in known if max(abs(k[2][c] - centre[c]) for c in range(colours)) <= EDGE_CONSISTENCY] or known
+    if max(max(abs(m) for m in k[2]) for k in known) < SEAM_MIN_OFFSET:
+        return None
+    # Measured cells in analysis pixels; the field's nodes sit every ``grid`` analysis pixels.
+    points = [(kx * cell, ky * cell, meds) for kx, ky, meds in known]
+    grid = max(1, math.ceil(EDGE_GRID / step))
+    nw, nh = math.ceil(sw / grid), math.ceil(sh / grid)
+    offsets = []
+    for ny in range(nh):
+        for nx in range(nw):
+            px, py = min(sw - 1, nx * grid + grid // 2), min(sh - 1, ny * grid + grid // 2)
+            d = dist[py * sw + px]
+            depth = max(0, -d) * step
+            if d > reach or depth >= EDGE_FULL + EDGE_FADE:
+                offsets.append((0.0,) * colours)
+                continue
+            weight = 1.0 if depth <= EDGE_FULL else 0.5 * (1 + math.cos(math.pi * (depth - EDGE_FULL) / EDGE_FADE))
+            acc = [0.0] * colours
+            total = 0.0
+            exact = None
+            for kx, ky, meds in points:
+                d2 = (kx - px - 0.5) ** 2 + (ky - py - 0.5) ** 2
+                if d2 < 1e-6:
+                    exact = meds
+                    break
+                w = 1.0 / d2
+                total += w
+                for c in range(colours):
+                    acc[c] += w * meds[c]
+            values = exact if exact else tuple(a / total for a in acc)
+            offsets.append(tuple(weight * v for v in values))
+    return SeamField(nw, nh, step * grid, tuple(offsets))
+
+
 def apply_seam_field(data: bytes, width: int, height: int, channels: int, field: SeamField) -> bytes:
     """``data`` with the field's offsets added to its colour channels (bilinear between cells, alpha untouched)."""
     colours = min(3, channels)
