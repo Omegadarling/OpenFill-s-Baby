@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Exercise the native sections and attachments without connecting to PhotoCraft or ComfyUI."""
 
+import gc
 import io
 import sys
 import tempfile
@@ -30,6 +31,7 @@ from openfill.config import Settings  # noqa: E402
 
 class InlinePanelTests(unittest.TestCase):
     def setUp(self):
+        self.addCleanup(self.free_widgets)  # runs last, after close_root
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.profile = Path(tmp.name)
@@ -118,6 +120,14 @@ class InlinePanelTests(unittest.TestCase):
         ui._cache.clear()
         ui.FONTS = None
         root.destroy()
+
+    def free_widgets(self):
+        """Free the bar and its root here, on the main thread. A Tk interpreter that the garbage
+        collector frees on another thread (a later test's server) aborts the whole run with
+        "Tcl_AsyncDelete: async handler deleted by the wrong thread"."""
+        for name in ("bar", "api", "service"):  # the mocks keep the bar's callbacks
+            vars(self).pop(name, None)
+        gc.collect()
 
     def test_engine_finder_saves_into_both_native_pickers(self):
         panel = self.bar.settings_view.engine

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import gc
 import io
 import json
 import os
@@ -1271,6 +1272,9 @@ class LookTests(unittest.TestCase):
             root = tk.Tk()
         except Exception:  # noqa: BLE001 - no Tk or no display
             self.skipTest("no display")
+        # Free the widgets once this method has returned, on the main thread: a Tk interpreter that
+        # the garbage collector frees on another thread aborts the run ("Tcl_AsyncDelete").
+        self.addCleanup(gc.collect)
         try:
             sent = []
             box = ui.PromptBox(root, lambda: sent.append(box.get()), lambda step: "break")

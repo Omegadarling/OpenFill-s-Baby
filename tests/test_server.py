@@ -10,7 +10,6 @@ import sys
 import tempfile
 import time
 import unittest
-import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -165,12 +164,19 @@ class LaunchArgumentTests(ManagerCase):
     def test_supervisor_stderr_is_appended_to_a_log(self):
         log = self.manager.supervisor_stderr_log
         log.write_text("earlier run\n", encoding="utf-8")
-        with warnings.catch_warnings():  # the detached child outlives its Popen object on purpose
-            warnings.simplefilter("ignore", ResourceWarning)
+        children = []
+        real_popen = server.subprocess.Popen
+
+        def popen(*args, **kwargs):
+            children.append(real_popen(*args, **kwargs))
+            return children[-1]
+
+        with mock.patch.object(server.subprocess, "Popen", side_effect=popen):
             self.manager._spawn_detached([sys.executable, "-c", "import sys; sys.stderr.write('argparse said no')"])
-        deadline = time.monotonic() + 20
-        while time.monotonic() < deadline and "argparse said no" not in log.read_text(encoding="utf-8"):
-            time.sleep(0.2)
+        # The child holds its own handle on the log until it exits (its text only lands as it shuts
+        # down), and Windows cannot delete an open file: wait for it before the temp folder goes.
+        for child in children:
+            child.wait(timeout=20)
         text = log.read_text(encoding="utf-8")
         self.assertTrue(text.startswith("earlier run\n"))
         self.assertIn("argparse said no", text)

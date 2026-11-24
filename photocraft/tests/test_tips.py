@@ -1,5 +1,6 @@
 """Every control, model and removal method has a tooltip, and both panels show them."""
 
+import gc
 import re
 import sys
 import unittest
@@ -130,6 +131,10 @@ class NativeTipTests(unittest.TestCase):
     def setUp(self):
         import tkinter as tk
 
+        # Runs last: free the root here, on the main thread. A Tk interpreter that the garbage
+        # collector frees on another thread (a later test's server) aborts the whole run with
+        # "Tcl_AsyncDelete: async handler deleted by the wrong thread".
+        self.addCleanup(gc.collect)
         self.root = tk.Tk()
         self.root.withdraw()
         self.addCleanup(self.close)
@@ -139,6 +144,7 @@ class NativeTipTests(unittest.TestCase):
         ui._cache.clear()
         ui.FONTS = None
         self.root.destroy()
+        del self.root
 
     def test_a_segment_shows_its_own_tip_and_the_gap_shows_none(self):
         seg = ui.Seg(self.root, (("a", "First"), ("b", "Second")), width=200)
