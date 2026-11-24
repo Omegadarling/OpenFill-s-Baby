@@ -25,6 +25,8 @@ H3_IMAGE_EDIT_TEMPLATE = "h3_image_edit"
 # MOSS-Image Base with the AnyPaint arbitrary-mask adapter. Its only reference is
 # the masked canvas itself, so it accepts no attachments.
 MOSS_ANYPAINT_TEMPLATE = "moss_anypaint"
+# FLUX 3 Image Klein (ComfyUI packaging): one picture, the selection greyed in the reference, selection edits only.
+FLUX3_KLEIN_EDIT_TEMPLATE = "flux3_klein_edit"
 EDIT_REFERENCE_OPTIONS = {
     QWEN21_EDIT_TEMPLATE: (15, "<imageN>"),
     "fibo2_edit": (15, "<image_N>"),

@@ -24,6 +24,7 @@ from typing import Any
 from . import caption, comfy_setup, geometry, hardware, local_models, png, quality, ui_text, workflow
 from . import catalog as cat
 from .backend import (
+    FLUX3_KLEIN_EDIT_TEMPLATE,
     H3_IMAGE_EDIT_TEMPLATE,
     MOSS_ANYPAINT_TEMPLATE,
     QWEN21_EDIT_TEMPLATE,
@@ -404,6 +405,8 @@ class App:
             self.log.warning("could not queue the live-preview file: %s", err)
 
     def profile_for(self, model: ModelSpec) -> geometry.ModelProfile:
+        if model.effective_template == FLUX3_KLEIN_EDIT_TEMPLATE:
+            return geometry.ModelProfile("flux3_klein", min_side=768, max_side=2048, min_context=256, multiple=16)
         if model.effective_template == H3_IMAGE_EDIT_TEMPLATE:
             return geometry.ModelProfile("h3_image", min_side=768, max_side=2048, min_context=256, multiple=32)
         if model.effective_template == MOSS_ANYPAINT_TEMPLATE:
@@ -426,7 +429,10 @@ class App:
     def sampling(self, model: ModelSpec, variations: int, seed: int, denoise: float | None = None) -> Sampling:
         steps, cfg = int(self.settings.steps), float(self.settings.cfg)
         sampler, scheduler = self.settings.sampler, self.settings.scheduler
-        if model.effective_template == H3_IMAGE_EDIT_TEMPLATE:
+        if model.effective_template == FLUX3_KLEIN_EDIT_TEMPLATE:
+            # The distilled model's published recipe: 16 Euler/simple steps at CFG 1.
+            steps, cfg, sampler, scheduler, denoise = 16, 1.0, "euler", "simple", 1.0
+        elif model.effective_template == H3_IMAGE_EDIT_TEMPLATE:
             steps, cfg, sampler, scheduler, denoise = 6, 1.0, "euler", "simple", 1.0
         elif model.effective_template == MOSS_ANYPAINT_TEMPLATE:
             # The adapter's published recipe with the Base 8-step DMD2 distillation.
@@ -527,6 +533,7 @@ class App:
                             QWEN21_EDIT_TEMPLATE: "Qwen Image 2.1 Lightning",
                             H3_IMAGE_EDIT_TEMPLATE: "MiniMax H3 Image",
                             MOSS_ANYPAINT_TEMPLATE: "MOSS AnyPaint",
+                            FLUX3_KLEIN_EDIT_TEMPLATE: "FLUX 3 Image Klein",
                         }.get(e.template, "")
                         if self.settings.remote_fibo and "remove" in e.capabilities
                         else ""
@@ -937,6 +944,7 @@ class App:
         qwen_removal = remote_removal and model.qwen21_lightning
         h3_removal = remote_removal and model.effective_template == H3_IMAGE_EDIT_TEMPLATE
         moss_removal = remote_removal and model.effective_template == MOSS_ANYPAINT_TEMPLATE
+        flux3_removal = remote_removal and model.effective_template == FLUX3_KLEIN_EDIT_TEMPLATE
         if remote_removal and entry is not None and entry.id in self.settings.hidden_models:
             raise BackendError("This removal model is hidden. Choose a visible method.")
         if remote_removal and (
@@ -950,6 +958,7 @@ class App:
                 QWEN21_EDIT_TEMPLATE,
                 H3_IMAGE_EDIT_TEMPLATE,
                 MOSS_ANYPAINT_TEMPLATE,
+                FLUX3_KLEIN_EDIT_TEMPLATE,
             )
         ):
             raise BackendError("Choose an available removal model in Remove.")
@@ -1027,6 +1036,9 @@ class App:
         elif model.effective_template == QWEN21_EDIT_TEMPLATE:
             ww, wh = workflow.qwen21_reference_size(ctx.width, ctx.height)
             ws = geometry.WorkingSize(ww, wh, min(ww / ctx.width, wh / ctx.height))
+        elif model.effective_template == FLUX3_KLEIN_EDIT_TEMPLATE:
+            ww, wh = workflow.flux3_klein_size(ctx.width, ctx.height)
+            ws = geometry.WorkingSize(ww, wh, min(ww / ctx.width, wh / ctx.height))
         elif model.effective_template == H3_IMAGE_EDIT_TEMPLATE:
             ww, wh = workflow.h3_image_size(ctx.width, ctx.height)
             ws = geometry.WorkingSize(ww, wh, min(ww / ctx.width, wh / ctx.height))
@@ -1060,6 +1072,8 @@ class App:
             negative = ""
         elif moss_removal:
             prompt, negative = workflow.MOSS_ANYPAINT_REMOVAL_PROMPT, ""
+        elif flux3_removal:
+            prompt, negative = workflow.FLUX3_REMOVAL_PROMPT, ""
         elif qwen_removal:
             prompt = (
                 "Edit the first photograph. The second photograph marks the unwanted foreground object with translucent red paint. "

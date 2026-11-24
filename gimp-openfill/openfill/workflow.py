@@ -21,6 +21,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 
 from .backend import (
+    FLUX3_KLEIN_EDIT_TEMPLATE,
     H3_IMAGE_EDIT_TEMPLATE,
     MOSS_ANYPAINT_TEMPLATE,
     QWEN21_EDIT_TEMPLATE,
@@ -1174,6 +1175,7 @@ SELECTION_EDIT_TEMPLATES = (
     QWEN21_EDIT_TEMPLATE,
     H3_IMAGE_EDIT_TEMPLATE,
     MOSS_ANYPAINT_TEMPLATE,
+    FLUX3_KLEIN_EDIT_TEMPLATE,
     *SDXL_EDIT_TEMPLATES,
 )
 
@@ -1498,6 +1500,185 @@ def build_fibo2_edit(
     return g.to_dict()
 
 
+# FLUX 3 Image Klein's own image-to-image graph (black-forest-labs/flux-3-image-klein-comfy, workflows/
+# flux3_klein_bf16_i2i.json): the distilled model samples 16 Euler/simple steps at CFG 1 with a fixed log(16) shift.
+FLUX3_KLEIN_SHIFT = round(math.log(16), 5)  # 2.77259
+FLUX3_KLEIN_MEGAPIXELS = 4.0  # the official ImageScaleToTotalPixels target; both sides are multiples of 16
+FLUX3_KLEIN_MAX_MEGAPIXELS = 4.5  # the most the model is run at, even for a narrow strip
+# Removal uses the same grey-region reference. The instruction is the removal itself, sent as is.
+FLUX3_REMOVAL_PROMPT = (
+    "Remove the object in the gray selected area. Continue the surrounding background, matching its "
+    "texture, lighting, perspective and edges, and leave no trace of the removed object."
+)
+
+
+def flux3_klein_size(width: int, height: int) -> tuple[int, int]:
+    """About 4 megapixels with both sides multiples of 16. A short side under 768 is raised to 768 only as far as
+    the 4.5 MP cap allows, so a narrow strip never costs more than a normal picture."""
+    scale = min(1.0, math.sqrt(FLUX3_KLEIN_MEGAPIXELS * 1_000_000 / (width * height)))
+    scale = max(scale, 768 / min(width, height))
+    scale = min(scale, math.sqrt(FLUX3_KLEIN_MAX_MEGAPIXELS * 1_000_000 / (width * height)))
+    return max(16, round(width * scale / 16) * 16), max(16, round(height * scale / 16) * 16)
+
+
+def flux3_klein_prompt(prompt: str) -> str:
+    """The instruction for the grey-region reference, worded as FIBO's Replace mode is."""
+    return (
+        f"Regenerate the gray selected area of the reference image with this requested content: {prompt.strip()}\n"
+        "Use the visible surroundings as reference. Match their perspective, scale, lighting, materials and texture, "
+        "continuing surfaces and outlines at the boundary. Keep the unmasked surroundings unchanged. "
+        "Replace the gray area completely; do not leave a gray patch."
+    )
+
+
+def flux3_klein_text(prompt: str) -> str:
+    """The text for the reference: an edit instruction is worded for the grey region; removal is sent as is."""
+    return prompt.strip() if prompt == FLUX3_REMOVAL_PROMPT else flux3_klein_prompt(prompt)
+
+
+def build_flux3_klein_edit(
+    req: InpaintRequest,
+    image_ref: str,
+    mask_ref: str,
+    seed: int,
+    caps: Capabilities,
+    filename_prefix: str = "openfill/flux3-klein",
+    *,
+    reference_refs: tuple[str, ...] = (),
+) -> dict:
+    """Selection-aware FLUX 3 Klein editing with the NVFP4 distilled model.
+
+    As in FIBO's Replace mode, the selection is greyed in the reference the model
+    sees, and the result is composited over the original exterior once; PhotoCraft
+    applies the soft alpha. FLUX 3 Klein takes one picture, so no references.
+
+    Removal samples as latent inpainting: the exterior latent is held to the
+    original at every step, so the repair is generated to fit the real
+    surroundings. From an empty latent the model redraws the whole crop, and its
+    colour drift showed as an outline (rated seams on 26 of 54 removals, 2026-11-24).
+    """
+    if req.mode != "fill":
+        raise ValueError("FLUX 3 Klein supports editing a selection or the whole image; Expand is not supported")
+    if not req.prompt.strip():
+        raise ValueError("Write an edit instruction for FLUX 3 Klein")
+    if not all((req.model.unet, req.model.clip1, req.model.vae)):
+        raise ValueError("FLUX 3 Klein needs its diffusion model, Qwen3-VL text encoder and FLUX.2 VAE")
+    if _is_gguf(req.model.unet) or _is_gguf(req.model.clip1):
+        raise ValueError("This FLUX 3 Klein integration requires native safetensors models")
+    if req.model.unet.replace("\\", "/").rsplit("/", 1)[-1].lower() != "flux3-image-klein-nvfp4.safetensors":
+        raise ValueError("PhotoCraft FLUX 3 Klein editing requires the NVFP4 diffusion model")
+    if reference_refs:
+        raise ValueError("FLUX 3 Klein edits one picture; reference images are not offered")
+    if min(req.width, req.height, req.work_width, req.work_height) < 1:
+        raise ValueError("FLUX 3 Klein needs positive image dimensions")
+
+    width, height = flux3_klein_size(req.width, req.height)
+    aligned = replace(req, work_width=width, work_height=height, color_match=0.0)
+    g = Graph()
+    g.add("unet", "UNETLoader", unet_name=req.model.unet, weight_dtype="default")
+    g.add("clip", "CLIPLoader", clip_name=req.model.clip1, type="flux3", device="default")
+    g.add("vae", "VAELoader", vae_name=req.model.vae)
+    g.add("load_image", "LoadImage", image=image_ref)
+    g.add("load_mask", "LoadImage", image=mask_ref)
+    image = g.out("load_image")
+    if aligned.needs_scaling:
+        image = _scale_image(g, "image_scale", image, width, height)
+    g.add("selection_mask", "ImageToMask", image=g.out("load_mask"), channel="red")
+    # Keep every selected pixel in the guide (no 0.5 threshold on a feathered mask); the support is binary.
+    g.add("selection_support", "ThresholdMask", mask=g.out("selection_mask"), value=0.0)
+    guide_mask = g.out("selection_support")
+    if aligned.needs_scaling:
+        g.add("guide_mask_image", "MaskToImage", mask=guide_mask)
+        g.add(
+            "guide_mask_scale",
+            "ImageScale",
+            image=g.out("guide_mask_image"),
+            upscale_method="nearest-exact",
+            width=width,
+            height=height,
+            crop="disabled",
+        )
+        g.add("guide_mask", "ImageToMask", image=g.out("guide_mask_scale"), channel="red")
+        guide_mask = g.out("guide_mask")
+    g.add("guide_gray", "EmptyImage", width=width, height=height, batch_size=1, color=0x808080)
+    g.add(
+        "selection_guide",
+        "ImageCompositeMasked",
+        destination=image,
+        source=g.out("guide_gray"),
+        x=0,
+        y=0,
+        resize_source=False,
+        mask=guide_mask,
+    )
+    g.add("prompt_positive", "CLIPTextEncode", clip=g.out("clip"), text=flux3_klein_text(req.prompt))
+    g.add("prompt_negative", "CLIPTextEncode", clip=g.out("clip"), text=req.negative or "")
+    # ReferenceMultiLatent attaches the grey-region reference to both prompts; its images input is an autogrow list.
+    g.add(
+        "reference",
+        "ReferenceMultiLatent",
+        positive=g.out("prompt_positive"),
+        negative=g.out("prompt_negative"),
+        vae=g.out("vae"),
+        resolution="resize",
+        **{"resolution.megapixels": 1.0, "images.image0": g.out("selection_guide")},
+    )
+    g.add(
+        "shift",
+        "ModelSamplingFlux",
+        model=g.out("unet"),
+        max_shift=FLUX3_KLEIN_SHIFT,
+        base_shift=FLUX3_KLEIN_SHIFT,
+        width=width,
+        height=height,
+    )
+    if req.prompt == FLUX3_REMOVAL_PROMPT:
+        g.add("guide_latent", "VAEEncode", pixels=g.out("selection_guide"), vae=g.out("vae"))
+        g.add("latent", "SetLatentNoiseMask", samples=g.out("guide_latent"), mask=guide_mask)
+    else:
+        g.add("latent", "EmptyFlux2LatentImage", width=width, height=height, batch_size=1)
+    sampler_latent = g.out("latent")
+    batch = max(1, int(req.sampling.batch))
+    if batch > 1:
+        g.add("latent_batch", "RepeatLatentBatch", samples=sampler_latent, amount=batch)
+        sampler_latent = g.out("latent_batch")
+    g.add(
+        "sampler",
+        "KSampler",
+        model=g.out("shift"),
+        positive=g.out("reference", 0),
+        negative=g.out("reference", 1),
+        latent_image=sampler_latent,
+        seed=int(seed),
+        steps=int(req.sampling.steps),
+        cfg=float(req.sampling.cfg),
+        sampler_name="euler",
+        scheduler="simple",
+        denoise=1.0,
+    )
+    g.add("decode", "VAEDecode", samples=g.out("sampler"), vae=g.out("vae"))
+    # Hard support protects the original exterior; the soft alpha is applied later by PhotoCraft.
+    _finish(g, aligned, g.out("decode"), g.out("selection_mask"), caps, filename_prefix)
+    generated = g.nodes[OUTPUT_NODE]["inputs"]["images"]
+    destination = g.out("load_image")
+    if batch > 1:
+        # ImageCompositeMasked repeats or truncates its source to the destination batch size.
+        g.add("source_batch", "RepeatImageBatch", image=destination, amount=batch)
+        destination = g.out("source_batch")
+    g.add(
+        "selection_composite",
+        "ImageCompositeMasked",
+        destination=destination,
+        source=generated,
+        x=0,
+        y=0,
+        resize_source=False,
+        mask=g.out("selection_support"),
+    )
+    g.nodes[OUTPUT_NODE]["inputs"]["images"] = g.out("selection_composite")
+    return g.to_dict()
+
+
 # The prompts erase-trained models run with (positive, negative). RORem's authors found
 # content-free quality words help; the FLUX Fill removal LoRA needs no prompt.
 ERASER_PROMPTS = {
@@ -1721,6 +1902,7 @@ BUILDERS = {
     "sdxl_edit": build_sdxl_edit,
     "sdxl_inpaint_edit": build_sdxl_edit,
     "fibo2_edit": build_fibo2_edit,
+    FLUX3_KLEIN_EDIT_TEMPLATE: build_flux3_klein_edit,
     "inpaint_model": build_removal,
     "sdxl_eraser": build_inpaint,
     "flux_eraser": build_inpaint,

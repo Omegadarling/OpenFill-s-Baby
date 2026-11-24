@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from openfill.remote_models import (
     DEV_ID,
+    FLUX3_KLEIN_ID,
     H3_IMAGE_ID,
     LAMA_ID,
     MOSS_ANYPAINT_ID,
@@ -26,6 +27,7 @@ FAMILIES = {
     "rorem": (ROREM_ID, "rorem-sdxl"),
     "lama": (LAMA_ID, "lama-big"),
     "qwen": (QWEN21_LIGHTNING_ID,),
+    "flux3": (FLUX3_KLEIN_ID,),
     "local": (TEXTURE_REMOVAL,),
 }
 # Names short enough to sit under a thumbnail.
@@ -40,6 +42,7 @@ SHORT = {
     DEV_ID: "FIBO",
     H3_IMAGE_ID: "H3",
     MOSS_ANYPAINT_ID: "AnyPaint",
+    FLUX3_KLEIN_ID: "FLUX 3",
 }
 TIP = "Automatic makes two repairs with the methods that rated best for a selection this size. Keep the better one."
 

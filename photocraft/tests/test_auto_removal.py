@@ -23,7 +23,7 @@ from openfill_photocraft.service import JobState, Service, WebRunner, _joined  #
 
 from openfill import quality  # noqa: E402
 from openfill.geometry import Rect  # noqa: E402
-from openfill.remote_models import H3_IMAGE_ID, LAMA_ID, QWEN21_LIGHTNING_ID, ROREM_ID  # noqa: E402
+from openfill.remote_models import FLUX3_KLEIN_ID, H3_IMAGE_ID, LAMA_ID, QWEN21_LIGHTNING_ID, ROREM_ID  # noqa: E402
 
 # The cascade is tested on a fixed order, so the tests hold when new ratings rewrite ``removal_table``.
 TABLE = (
@@ -103,7 +103,8 @@ class PlanTests(unittest.TestCase):
             self.assertNotIn(H3_IMAGE_ID, [method for method, _count in order])
 
     def test_methods_that_are_not_installed_drop_out(self):
-        order = removal_plan.steps(0.03, {LAMA_ID, QWEN21_LIGHTNING_ID})
+        with patch.object(removal_table, "SIZES", TABLE):
+            order = removal_plan.steps(0.03, {LAMA_ID, QWEN21_LIGHTNING_ID})
         self.assertEqual({method for method, _count in order}, {LAMA_ID, QWEN21_LIGHTNING_ID})
         self.assertIsNone(removal_plan.first_method({QWEN21_LIGHTNING_ID, H3_IMAGE_ID}))
         self.assertIsNone(removal_plan.first_method(set()))
@@ -116,8 +117,26 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(removal_plan.first_method(self.everything), method)
                 self.assertEqual(removal_plan.steps(0.03, self.everything)[0], (method, 2))
 
+    def test_flux3_leads_where_the_table_puts_it_and_gives_way_where_it_is_missing(self):
+        table = (
+            (0.01, TABLE[0][1]),
+            (0.05, (("flux3", 1), ("rorem", 2), ("qwen", 1))),
+            (1.01, (("rorem", 1), ("flux3", 1), ("qwen", 1))),
+        )
+        with patch.object(removal_table, "SIZES", table):
+            self.assertEqual(
+                removal_plan.steps(0.03, self.everything | {FLUX3_KLEIN_ID}),
+                [(FLUX3_KLEIN_ID, 1), (ROREM_ID, 2), (QWEN21_LIGHTNING_ID, 1)],
+            )
+            self.assertEqual(removal_plan.first_method(self.everything | {FLUX3_KLEIN_ID}), FLUX3_KLEIN_ID)
+            self.assertEqual(removal_plan.steps(0.03, self.everything), [(ROREM_ID, 2), (QWEN21_LIGHTNING_ID, 1)])
+            self.assertEqual(removal_plan.steps(0.4, self.everything)[:2], [(ROREM_ID, 1), (QWEN21_LIGHTNING_ID, 1)])
+            self.assertEqual(removal_plan.first_method(self.everything), ROREM_ID)
+        self.assertEqual(removal_plan.short_label(FLUX3_KLEIN_ID), "FLUX 3")
+
     def test_a_managed_install_resolves_its_own_ids(self):
-        order = removal_plan.steps(0.03, {"rorem-sdxl", "lama-big"})
+        with patch.object(removal_table, "SIZES", TABLE):
+            order = removal_plan.steps(0.03, {"rorem-sdxl", "lama-big"})
         self.assertEqual({method for method, _count in order}, {"rorem-sdxl", "lama-big"})
         self.assertEqual(removal_plan.short_label("lama-big"), "LaMa")
         self.assertEqual(removal_plan.short_label("something-new", "Something New"), "Something New")

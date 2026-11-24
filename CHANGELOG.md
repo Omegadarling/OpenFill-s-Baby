@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Add FLUX 3 Image Klein (NVFP4) for selection edits and removal on ComfyUI servers that offer its nodes and model files. Removal samples as latent inpainting, holding the original surroundings fixed.
 - Detect long Windows paths before ComfyUI startup or download and explain the shorter-folder fix.
 - Add PhotoCraft installation on Apple Silicon, tested with all four tools on an M3 MacBook Air.
 - Fix Finder Python architecture, Aqua panel startup and PhotoCraft discovery on macOS.

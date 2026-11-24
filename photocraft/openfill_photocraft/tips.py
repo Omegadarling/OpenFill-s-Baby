@@ -16,6 +16,7 @@ from typing import Any
 from openfill.remote_models import (
     DEV_HERETIC_ID,
     DEV_ID,
+    FLUX3_KLEIN_ID,
     H3_IMAGE_ID,
     LAMA_ID,
     MOSS_ANYPAINT_ID,
@@ -72,9 +73,10 @@ METHODS = {
     AUTO_REMOVAL: _tip(
         "Automatic: makes two repairs with the methods that rated best for a selection this size, and you keep "
         "the better one.",
-        "the better of two rated 4.4 stars, against 3.5 for the best single method; a repair that leaves the "
-        "object is replaced by the next method.",
-        "takes about twice as long; needs RORem with Qwen Lightning or LaMa on the engine.",
+        "the better of two rated 4.1 stars (a 4 or 5 on two pictures in three), against 3.5 for the best single "
+        "method; a repair that leaves the object is replaced by the next method.",
+        "takes longer than one method: about 30 s once a selection covers 1% of the picture, where FLUX 3 is one "
+        "of the two; needs RORem with FLUX 3, Qwen Lightning or LaMa on the engine.",
     ),
 }
 
@@ -126,6 +128,14 @@ MODELS = {
         "finer detail than Turbo; fewer refused prompts.",
         "slow (about two minutes); results differ from the original encoder; not offered for Remove.",
     ),
+    FLUX3_KLEIN_ID: _tip(
+        "FLUX 3 Image Klein NVFP4: edits the selection in 16 steps. The selection is greyed in the reference the model sees.",
+        "one picture, no reference images; fast on Blackwell GPUs.",
+        "rated low for edits (2.1 of 5 stars; it often changed too much); its FLUX Kommunity License limits "
+        "commercial output to companies under US$5M annual revenue.",
+    ) + ("\nFor Remove: 3.4 stars, level with RORem and the best method on selections covering 1 to 5% of the "
+         "picture; about 28 s. Shown beside RORem, the better of the two rated 4.1, so Automatic pairs them on "
+         "selections covering 1% of the picture or more. On small selections use RORem."),
     H3_IMAGE_ID: _tip(
         "MiniMax H3 Image: instruction editing in six steps, on the selection or the whole image.",
         "quick for its size; follows instructions; takes up to 4 reference images.",

@@ -12,6 +12,7 @@ import time
 from pathlib import PurePosixPath
 
 from .backend import (
+    FLUX3_KLEIN_EDIT_TEMPLATE,
     H3_IMAGE_EDIT_TEMPLATE,
     MOSS_ANYPAINT_TEMPLATE,
     QWEN21_EDIT_TEMPLATE,
@@ -46,6 +47,13 @@ MOSS_ANYPAINT_LORA = "moss_anypaint_rank32.safetensors"
 # lodestones' Base 8-step DMD2 adapter. The KroMOSS install published the same file
 # (SHA-256 7683fe1f...f6f2) under its own name; both spellings are one adapter.
 MOSS_DMD2_FILES = ("lora_dmd2.safetensors", "kromoss_8-step_dmd2.safetensors")
+# FLUX 3 Image Klein (ComfyUI packaging from black-forest-labs/flux-3-image-klein-comfy). Its files sit in their own
+# subfolders, so discovery matches the full path and never a bare filename.
+FLUX3_KLEIN_ID = "remote-flux3-klein-nvfp4"
+FLUX3_KLEIN_NODES = ("ReferenceMultiLatent", "ModelSamplingFlux", "EmptyFlux2LatentImage")
+FLUX3_KLEIN_UNET = "FLUX-3-Image-Klein/flux3-image-klein-nvfp4.safetensors"
+FLUX3_KLEIN_ENCODER = "FLUX-3-Image-Klein/qwen3vl_4b_bf16.safetensors"
+FLUX3_KLEIN_VAE = "FLUX-3-Image-Klein/flux2-vae.safetensors"
 
 
 def _first_filename(names: list[str], wanted: tuple[str, ...]) -> str:
@@ -94,6 +102,51 @@ def _discover_moss_anypaint(client: ComfyClient, source_label: str) -> list[Mode
                 FileSpec("vae", "", "vae/" + vae),
                 FileSpec("lora", "", "loras/" + adapter),
                 FileSpec("lora2", "", "loras/" + distill),
+            ),
+        )
+    ]
+
+
+def _server_path(names: list[str], wanted: str) -> str:
+    """The server's spelling of ``wanted`` (a path under the model folder), or "" when it is not visible."""
+    return next((name for name in names if name.replace("\\", "/").lower() == wanted.lower()), "")
+
+
+def _discover_flux3_klein(client: ComfyClient, source_label: str) -> list[ModelEntry]:
+    """Offer FLUX 3 Klein NVFP4 only when its nodes, its CLIP type and its three files are all visible."""
+    if not all(client.object_info(node).get(node) for node in FLUX3_KLEIN_NODES):
+        return []
+    unet = _server_path(_options(client.object_info("UNETLoader"), "UNETLoader", "unet_name"), FLUX3_KLEIN_UNET)
+    clip_info = client.object_info("CLIPLoader")
+    if "flux3" not in _options(clip_info, "CLIPLoader", "type"):
+        return []
+    encoder = _server_path(_options(clip_info, "CLIPLoader", "clip_name"), FLUX3_KLEIN_ENCODER)
+    vae = _server_path(_options(client.object_info("VAELoader"), "VAELoader", "vae_name"), FLUX3_KLEIN_VAE)
+    if not (unet and encoder and vae):
+        return []
+    return [
+        ModelEntry(
+            id=FLUX3_KLEIN_ID,
+            name=f"FLUX 3 Image Klein NVFP4 · {source_label}",
+            tier="edit",
+            capabilities=("fill", "edit", "remove"),
+            arch="flux3_klein",
+            template=FLUX3_KLEIN_EDIT_TEMPLATE,
+            page="https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy",
+            license_name="FLUX Kommunity License v1.0",
+            license_url="https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy",
+            gated=False,
+            source_type="first-party",
+            uploader="Black Forest Labs",
+            min_vram_gb=16,
+            requires_nodes=(),
+            requires_models=(),
+            source="remote",
+            family="flux3-klein",
+            files=(
+                FileSpec("unet", "", "diffusion_models/" + unet),
+                FileSpec("clip1", "", "text_encoders/" + encoder),
+                FileSpec("vae", "", "vae/" + vae),
             ),
         )
     ]
@@ -409,6 +462,7 @@ def discover(client: ComfyClient, source_label: str = "Local ComfyUI") -> list[M
         ("Qwen Image 2.1", _discover_qwen21),
         ("MiniMax H3 Image", _discover_h3_image),
         ("MOSS AnyPaint", _discover_moss_anypaint),
+        ("FLUX 3 Klein", _discover_flux3_klein),
         ("LaMa", _discover_lama),
         ("RORem", _discover_rorem),
     ):

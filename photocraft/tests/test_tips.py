@@ -55,7 +55,7 @@ class TipTextTests(unittest.TestCase):
 
     def test_a_model_that_can_remove_says_how_it_rated_for_removal(self):
         for model_id in (remote_models.QWEN21_LIGHTNING_ID, remote_models.DEV_ID, remote_models.H3_IMAGE_ID,
-                         remote_models.MOSS_ANYPAINT_ID):
+                         remote_models.MOSS_ANYPAINT_ID, remote_models.FLUX3_KLEIN_ID):
             self.assertIn("\nFor Remove: ", tips.model_tip(model_id))
         self.assertIn("not offered for Remove", tips.model_tip(remote_models.QWEN21_FULL_ID))
 
