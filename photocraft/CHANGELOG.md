@@ -5,7 +5,7 @@ All notable changes to OpenFill for PhotoCraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.24.3] - 2026-11-25
 
 - **Automatic Remove shows FLUX 3's repair first from 1% of the picture up**, now also on selections over 5%, with RORem beside it. With the edge correction, FLUX 3 rated 3.9 stars on the 46 rated pictures of that size, against 3.2 for RORem, and seam and colour complaints fell from 21 to 4. Replayed on all 54 rated pictures, the better of Automatic's two repairs rated 4.2 stars, and three pictures in four got a 4 or 5. Under 1% both repairs are still RORem variations.
 - The tooltips for Automatic, FLUX 3, RORem and Qwen quote these ratings.
