@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add FLUX 3 Image Klein (NVFP4) for selection edits and removal on ComfyUI servers that offer its nodes and model files. Removal samples as latent inpainting, holding the original surroundings fixed.
 - Match a FLUX 3 removal's fill to the original across the selection edge (`quality.edge_field`), removing the lighter patch it could leave on flat surfaces.
+- Leave patterned stretches of the selection edge, such as gingham, out of that match: their band medians reflect the pattern rather than a colour drift and could tint a fill that already matched.
 - Detect long Windows paths before ComfyUI startup or download and explain the shorter-folder fix.
 - Add PhotoCraft installation on Apple Silicon, tested with all four tools on an M3 MacBook Air.
 - Fix Finder Python architecture, Aqua panel startup and PhotoCraft discovery on macOS.

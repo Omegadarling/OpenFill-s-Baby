@@ -33,6 +33,20 @@ def bricks(x, y):
     return (117, 112, 105) if mortar else (151, 84, 65)
 
 
+def gingham(x, y):
+    """Red and white gingham with a little weave noise: red where two stripes cross, pink where one does."""
+    across, down = (x // 13) % 2 == 0, (y // 13) % 2 == 0
+    noise = (x * 7919 + y * 104729) % 13 - 6
+    base = (196, 28, 40) if across and down else (232, 140, 150) if across or down else (238, 236, 241)
+    return tuple(max(0, min(255, v + noise)) for v in base)
+
+
+def grain(x, y):
+    """A flat wall with sensor-like grain of about +-15 levels."""
+    noise = (x * 7919 + y * 104729) % 31 - 15
+    return tuple(v + noise for v in (120, 130, 140))
+
+
 def mean_inside(data):
     sums, n = [0, 0, 0], 0
     for y in range(HOLE[1] + 8, HOLE[3] - 8):
@@ -99,6 +113,21 @@ class EdgeFieldTests(unittest.TestCase):
         self.assertEqual(tuple(fixed[centre : centre + 3]), wall)
         edge = 4 * (300 * size + 110)
         for got, want in zip(fixed[edge : edge + 3], wall, strict=True):
+            self.assertAlmostEqual(got, want, delta=2)
+
+    def test_a_check_pattern_is_not_read_as_drift(self):
+        # A perfect fill: the cloth simply continues where the fork was. Red and white bands either side of
+        # the edge hold different parts of the pattern, so their medians differ although nothing drifted;
+        # correcting by them turned a gingham fill's whites mint.
+        original = picture(lambda x, y: (175, 178, 182) if inside(x, y) else gingham(x, y))
+        self.assertIsNone(quality.edge_field(W, H, original, picture(gingham), selection(), 4))
+
+    def test_a_lighter_fill_on_a_grainy_wall_is_still_matched(self):
+        original = picture(lambda x, y: (0, 0, 0) if inside(x, y) else grain(x, y))
+        layer = picture(lambda x, y: tuple(v + 10 for v in grain(x, y)) if inside(x, y) else grain(x, y))
+        field, fixed = corrected(original, layer)
+        self.assertIsNotNone(field)
+        for got, want in zip(mean_inside(fixed), mean_inside(picture(grain)), strict=True):
             self.assertAlmostEqual(got, want, delta=2)
 
     def test_a_large_difference_is_content_and_not_corrected(self):

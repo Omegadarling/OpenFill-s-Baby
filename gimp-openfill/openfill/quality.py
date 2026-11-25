@@ -490,10 +490,15 @@ def seam_field(
 # The drift is strongest next to the edge: on a large selection over a vignette, pushing the edge offset
 # deep inside darkened a centre that was right and drew the removed figure as a dark ghost. So the
 # correction is full near the edge and fades out further in; small selections are covered whole.
+# A band whose values spread widely (red and white gingham, a tiled floor) has no level to compare: its
+# median says which part of the pattern fell inside the band, not how far the fill drifted. Correcting by
+# such cells turned a gingham fill's whites mint although the fill had matched the cloth, so they are left
+# out. Smooth walls, skies and vignettes spread a few levels, grain about 8, gingham 70 to 100.
 EDGE_MIN_CELL = (
     32  # full-size pixels per cell at least: larger than a brick or a board, so both sides sample the same texture
 )
 EDGE_CONSISTENCY = 12  # cells further than this from the edge-wide median offset see content, not drift
+EDGE_MAX_SPREAD = 32  # a band spreading wider than this (median absolute deviation, levels) is a pattern: left out
 EDGE_FULL = 32  # full-size pixels inside the edge that get the whole correction
 EDGE_FADE = 64  # then the correction fades to nothing over this many pixels
 EDGE_GRID = 24  # full-size pixels between the field's nodes: fine enough for a smooth fade
@@ -512,9 +517,10 @@ def edge_field(
     """Offsets that make a removal's fill in ``layer`` meet ``original`` across the selection edge, or None.
 
     Per edge cell: the median of ``original`` in a band just outside the selection minus the median of
-    ``layer`` in a band just inside it (``band`` full-size pixels each). Cells above ``SEAM_MAX_OFFSET``
-    or far from the edge-wide median are content and left out. The rest are interpolated over the
-    selection at full strength within ``EDGE_FULL`` pixels of the edge, fading out over ``EDGE_FADE``.
+    ``layer`` in a band just inside it (``band`` full-size pixels each). Cells whose bands spread wider
+    than ``EDGE_MAX_SPREAD`` (a pattern), above ``SEAM_MAX_OFFSET`` or far from the edge-wide median are
+    left out. The rest are interpolated over the selection at full strength within ``EDGE_FULL`` pixels
+    of the edge, fading out over ``EDGE_FADE``.
     """
     step = max(1, math.ceil(max(width, height) / side))
     sw, sh = len(range(0, width, step)), len(range(0, height, step))
@@ -564,7 +570,15 @@ def edge_field(
         out_samples, in_samples = pooled(outer, key), pooled(inner, key)
         if len(out_samples[0]) < 4 or len(in_samples[0]) < 4:
             continue
-        meds = tuple(_median(out_samples[c]) - _median(in_samples[c]) for c in range(colours))
+        out_meds, in_meds = [_median(v) for v in out_samples], [_median(v) for v in in_samples]
+        spread = max(
+            _median([abs(a - m) for a in values])
+            for samples, centres in ((out_samples, out_meds), (in_samples, in_meds))
+            for values, m in zip(samples, centres, strict=True)
+        )
+        if spread > EDGE_MAX_SPREAD:
+            continue  # a pattern: the medians say which part of it fell in each band
+        meds = tuple(o - i for o, i in zip(out_meds, in_meds, strict=True))
         if max(abs(m) for m in meds) <= SEAM_MAX_OFFSET:
             known.append((key % gw + 0.5, key // gw + 0.5, meds))
     if not known:
