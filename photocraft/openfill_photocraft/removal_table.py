@@ -12,5 +12,5 @@ PICTURES = 54
 SIZES = (
     (0.01, (("rorem", 2), ("qwen", 1), ("lama", 1))),
     (0.05, (("flux3", 1), ("rorem", 2), ("qwen", 1))),
-    (1.01, (("rorem", 1), ("flux3", 1), ("qwen", 1))),
+    (1.01, (("flux3", 1), ("rorem", 2), ("qwen", 1))),
 )

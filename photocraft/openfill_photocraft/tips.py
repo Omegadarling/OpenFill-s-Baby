@@ -40,14 +40,14 @@ def _tip(about: str, pros: str = "", cons: str = "") -> str:
 # ---- removal methods -----------------------------------------------------------------------
 
 _ROREM = _tip(
-    "RORem: an SDXL model trained to erase. The best-rated remover (3.5 of 5 stars).",
-    "cleanest background on most pictures; rarely leaves the object behind; leads on small and on large selections.",
-    "can soften fine texture and bend shapes hidden behind the object; about 6 s; needs 8 GB.",
+    "RORem: an SDXL model trained to erase (3.5 of 5 stars). The best-rated remover on small selections.",
+    "cleanest background on selections under 1% of the picture; rarely leaves the object behind; quick.",
+    "can soften fine texture and bend shapes hidden behind the object; on larger selections FLUX 3 rated higher; "
+    "about 6 s; needs 8 GB.",
 )
 _QWEN_REMOVE = (
-    "For Remove: rebuilds hidden shapes such as a wheel or an eye, and rated best on selections covering 1 to 5% "
-    "of the picture (2.7 stars overall). It left the object in place in about half of the test repairs, so "
-    "include the shadow and some background in the selection."
+    "For Remove: rebuilds hidden shapes such as a wheel or an eye (2.3 stars overall). It left the object in place "
+    "in about half of the test repairs, so include the shadow and some background in the selection."
 )
 _LAMA = _tip(
     "LaMa: a small prompt-free inpainter that continues the surrounding pattern (2.3 stars).",
@@ -73,10 +73,10 @@ METHODS = {
     AUTO_REMOVAL: _tip(
         "Automatic: makes two repairs with the methods that rated best for a selection this size, and you keep "
         "the better one.",
-        "the better of two rated 4.1 stars (a 4 or 5 on two pictures in three), against 3.5 for the best single "
-        "method; a repair that leaves the object is replaced by the next method.",
-        "takes longer than one method: about 30 s once a selection covers 1% of the picture, where FLUX 3 is one "
-        "of the two; needs RORem with FLUX 3, Qwen Lightning or LaMa on the engine.",
+        "the better of two rated 4.2 stars (a 4 or 5 on three pictures in four), against 3.3 for RORem alone; a "
+        "repair that leaves the object is replaced by the next method.",
+        "takes longer than one method: about 35 s once a selection covers 1% of the picture and about a minute over "
+        "5%, where FLUX 3 runs first; needs RORem with FLUX 3, Qwen Lightning or LaMa on the engine.",
     ),
 }
 
@@ -133,9 +133,9 @@ MODELS = {
         "one picture, no reference images; fast on Blackwell GPUs.",
         "rated low for edits (2.1 of 5 stars; it often changed too much); its FLUX Kommunity License limits "
         "commercial output to companies under US$5M annual revenue.",
-    ) + ("\nFor Remove: 3.4 stars, level with RORem and the best method on selections covering 1 to 5% of the "
-         "picture; about 28 s. Shown beside RORem, the better of the two rated 4.1, so Automatic pairs them on "
-         "selections covering 1% of the picture or more. On small selections use RORem."),
+    ) + ("\nFor Remove: the best-rated method on selections covering 1% of the picture or more (3.9 stars, against "
+         "3.2 for RORem), so Automatic shows its repair first there, with RORem beside it. About 35 s, or about a "
+         "minute on large selections. On small selections use RORem."),
     H3_IMAGE_ID: _tip(
         "MiniMax H3 Image: instruction editing in six steps, on the selection or the whole image.",
         "quick for its size; follows instructions; takes up to 4 reference images.",

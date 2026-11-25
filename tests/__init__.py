@@ -5,7 +5,7 @@
 
 Run with any Python 3.10+ from the repository root:
 
-    python -m unittest discover -s tests -v
+    python -m unittest discover -t . -s tests -v
 """
 
 import os
