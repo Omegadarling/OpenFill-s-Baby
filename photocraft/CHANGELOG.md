@@ -5,7 +5,7 @@ All notable changes to OpenFill for PhotoCraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.24.2] - 2026-11-25
 
 - **FLUX 3 removals on patterned surfaces keep their colour.** On a strong pattern such as red and white gingham, the thin bands just outside and just inside the selection hold different parts of the pattern, so the edge correction added in 0.24.1 could read the pattern as a colour difference and tint a fill that already matched (white checks turned mint). Edge stretches whose colours vary too much to measure are now left out, so patterned edges are not corrected. Smooth walls, skies, vignettes and illustrations are corrected as before.
 
