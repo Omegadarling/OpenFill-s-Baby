@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -116,6 +117,7 @@ class App:
         self._opencv_noted = False
         self._device_checked = False
         self._source_lock = threading.RLock()
+        self.job_options: dict[str, Any] = {}  # what the running job chose in place of saved settings (see choosing)
         self.paths = Paths.for_profile(self.io.profile_dir()).ensure()
         self.settings = Settings.load(self.paths.config)
         if self.settings.remote_fibo:
@@ -883,6 +885,27 @@ class App:
         self.log.info("fill: removal not sent to %s -> using %s", entry.id, best.id)
         return best.id
 
+    def option(self, name: str):
+        """A setting as the running job sees it: the job's own choice where it made one, else what is
+        saved. Automatic decides the settings its results were rated with; nothing it chooses is saved."""
+        return (getattr(self, "job_options", None) or {}).get(name, getattr(self.settings, name))
+
+    @contextmanager
+    def choosing(self, **options):
+        """Jobs run inside the ``with`` see ``options`` in place of the saved settings of those names."""
+        before = getattr(self, "job_options", None) or {}
+        self.job_options = {**before, **options}
+        try:
+            yield self
+        finally:
+            self.job_options = before
+
+    def _job_padding(self, removal: bool, prompt_free: bool) -> float:
+        """How much of the picture around the selection a fill sees, as a share of the selection's size: the job's
+        ``context_padding`` where it chose one (Automatic gives Qwen a tight crop round a drawn box), else the usual."""
+        chosen = (getattr(self, "job_options", None) or {}).get("context_padding")
+        return float(chosen) if chosen is not None else geometry.fill_padding(removal, prompt_free)
+
     def generative_fill(
         self,
         image,
@@ -966,15 +989,15 @@ class App:
             raise BackendError("Use this model from Remove.")
         # Options saved while this job runs apply to the next edit. Freeze all
         # context/mode/blend values before exporting pixels or entering inference.
-        fibo_mode = self.settings.fibo_edit_mode
-        fibo_context_mode = self.settings.fibo_context_mode
-        fibo_context_percent = float(self.settings.fibo_context_percent)
+        fibo_mode = self.option("fibo_edit_mode")
+        fibo_context_mode = self.option("fibo_context_mode")
+        fibo_context_percent = float(self.option("fibo_context_percent"))
         boundary_strength = (
-            float(self.settings.fibo_boundary_strength) / 100.0
-            if fibo_edit and self.settings.fibo_boundary_match
+            float(self.option("fibo_boundary_strength")) / 100.0
+            if fibo_edit and self.option("fibo_boundary_match")
             else 0.0
         )
-        auto_feather = self.settings.auto_feather
+        auto_feather = self.option("auto_feather")
         if remote_removal:
             auto_feather = False
             boundary_strength = 0.0
@@ -983,7 +1006,7 @@ class App:
             # Keep the captured selection edge, including any artist-applied feather.
             fibo_mode, fibo_context_mode, fibo_context_percent = "background", "local", 100.0
             boundary_strength, auto_feather = 0.0, False
-        auto_feather_percent = self.settings.auto_feather_percent
+        auto_feather_percent = self.option("auto_feather_percent")
         if strength is None:
             strength = self.sampling(model, variations, seed).denoise
         profile = self.profile_for(model)
@@ -1002,7 +1025,7 @@ class App:
             profile,
             model.arch,
             removal_intent,
-            (fibo_context_percent / 100.0 if fibo_edit else geometry.fill_padding(removal_intent, model.prompt_free)),
+            (fibo_context_percent / 100.0 if fibo_edit else self._job_padding(removal_intent, model.prompt_free)),
             refine=refine,
             layout=False if selection_edit or remote_removal else float(self.settings.tile_denoise) < 1.0,
             layout_min_scale=float(self.settings.layout_min_scale),
@@ -1251,11 +1274,11 @@ class App:
             raise
         if boundary_strength:
             self._match_fibo_boundary(image, layers, ctx, image_rgba, mask_raw, boundary_strength)
-        if flux3_removal and self.settings.seam_correction:
+        if flux3_removal and self.option("seam_correction"):
             self._match_removal_edge(image, layers, ctx, image_rgba, mask_raw)
-        if self.settings.seam_correction and not model.prompt_free and not selection_edit:
+        if self.option("seam_correction") and not model.prompt_free and not selection_edit:
             self._correct_seams(image, layers, ctx, image_rgba, mask_raw, layer_grow)
-        if self.settings.grain_match and not model.prompt_free and not selection_edit:
+        if self.option("grain_match") and not model.prompt_free and not selection_edit:
             self._match_grain(image, layers, ctx, image_rgba, mask_raw, result.seed)
         if len(layers) > 1 and self.settings.rank_variations and not render_views:
             layers = self._rank_variations(

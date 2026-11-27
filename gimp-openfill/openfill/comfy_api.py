@@ -55,6 +55,10 @@ def unsupported_gpu_line(log_text: str) -> str:
     return ""
 
 
+# What ComfyUI's image loader says once it has no address space left (see ``is_loader_exhausted``).
+LOADER_EXHAUSTED_SIGNS = ("cannot reshape array of size", "buffer size must be a multiple of element size")
+
+
 class ComfyExecutionError(ComfyApiError):
     """``execution_error`` event from the server (includes the exception type)."""
 
@@ -71,6 +75,17 @@ class ComfyExecutionError(ComfyApiError):
         available for execution on the device', which no smaller selection fixes."""
         text = f"{self.exception_type} {self!s}".lower()
         return "outofmemory" in text or "out of memory" in text
+
+    @property
+    def is_loader_exhausted(self) -> bool:
+        """True when ComfyUI's image loader has run out of address space. ComfyUI 0.46 reserves
+        memory-plus-swap of address space twice for each picture it loads and keeps it while the
+        picture stays in its cache. After some 160 pictures in one run a 64-bit Windows process has
+        none left, and every new picture fails in LoadImage until the cache is cleared (measured
+        2026-11-25 on a 192 GB machine: 127 TB reserved, 0.3 TB after ``clear_cache``)."""
+        text = f"{self!s} {self.traceback}".lower()
+        return (not self.node_type or self.node_type.startswith("LoadImage")) and any(
+            sign in text for sign in LOADER_EXHAUSTED_SIGNS)
 
     @property
     def is_unsupported_gpu(self) -> bool:
@@ -274,6 +289,12 @@ class ComfyClient:
     def free(self, unload_models: bool = True, free_memory: bool = True) -> None:
         """Ask the server to release models and VRAM."""
         self._json("POST", "/free", {"unload_models": unload_models, "free_memory": free_memory})
+
+    def clear_cache(self, settle: float = 1.0) -> None:
+        """Drop the server's cached node outputs and keep its models loaded. The server does this
+        between prompts, so wait ``settle`` seconds before queueing the next one."""
+        self.free(unload_models=False, free_memory=True)
+        time.sleep(settle)
 
     # job tracking --------------------------------------------------------
 

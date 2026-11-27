@@ -9,6 +9,7 @@ worker thread and keeps the variations of the last job for the picker.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import threading
@@ -18,15 +19,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from openfill.app import App, NothingSelected
-from openfill.backend import GenerationCancelled, describe_error
+from openfill.backend import BackendUnavailable, GenerationCancelled, describe_error
+from openfill.comfy_api import ComfyApiError
 from openfill.config import validate_generation_settings
 from openfill.progress import parse_preview_frame
 from openfill.remote_models import H3_IMAGE_ID
 from openfill.supervisor import process_name
 
-from . import removal_plan
+from . import cast, edit_plan, removal_plan
 from .bridge import PCImage, PCLayer, PhotoCraftBridge
 from .control import ControlClient, ControlError
+from .edit_plan import AUTO_EDIT
 from .engine_routes import EngineRoutes, mode_for
 from .references import ReferenceImages
 from .removal_advice import H3_TIP, TEXTURE_REMOVAL, recommend
@@ -60,8 +63,9 @@ class JobState:
     local_removal: bool = False
     committing: bool = False  # the final PhotoCraft history operation cannot be cancelled halfway
     variations: list[str] = field(default_factory=list)  # names, best first
-    variation_labels: list[str] = field(default_factory=list)  # the method behind each (removals), or ""
-    stage: tuple[int, int] = (0, 1)  # which of several repairs an automatic removal is making
+    variation_labels: list[str] = field(default_factory=list)  # the method or model behind each, or ""
+    stage: tuple[int, int] = (0, 1)  # which of several results an automatic removal or edit is making
+    stage_word: str = "Repair"  # what one of those results is called in the progress line
     shown: int = 0
     removal_summary: str = ""
     variation_set: int = 0
@@ -108,7 +112,7 @@ class WebRunner:
             index, count = self.state.stage
             fraction = max(0.0, min(1.0, float(fraction)))
             if count > 1:
-                fraction, text = (index + fraction) / count, f"Repair {index + 1} of {count}: {text}"
+                fraction, text = (index + fraction) / count, f"{self.state.stage_word} {index + 1} of {count}: {text}"
             self.state.fraction, self.state.text = fraction, str(text)
 
     def _preview(self, payload: bytes) -> None:
@@ -457,7 +461,7 @@ class Service:
                 raise RuntimeError("Keep or discard the current choices before changing the selection.")
             self.selection.validate(params)
             params = {
-                k: params[k] for k in ("action", "key", "pixels", "query", "point", "box", "operation") if k in params
+                k: params[k] for k in ("action", "key", "pixels", "query", "point", "box", "operation", "whole") if k in params
             }
         if removing and "adviceKey" in params:
             key = params["adviceKey"]
@@ -509,7 +513,7 @@ class Service:
             self.state.model = "WeVisOne-VL" if kind == "select" and params.get("action") != "grow" else ""
             self.state.removal_summary = ""
             self.state.notices = []  # a note about one job says nothing about the next
-            self.state.stage = (0, 1)
+            self.state.stage, self.state.stage_word = (0, 1), "Repair"
             self.state.local_removal = local_removal
             self.state.fraction, self.state.started, self.state.finished = 0.0, time.time(), 0.0
             self.state.cancel_requested = False
@@ -614,6 +618,18 @@ class Service:
                         self.state.removal_summary = (
                             f"{variations} requested; {len(layers)} distinct {label} for this selection."
                         )
+            elif kind == "fill" and model == AUTO_EDIT:
+                layers = self._edit_auto(
+                    image,
+                    app,
+                    str(p.get("prompt", "")),
+                    str(p.get("negative", "")),
+                    None if app.settings.remote_fibo and p.get("strength") is None else float(p.get("strength", 1.0)),
+                    seed,
+                    variations,
+                )
+                with self.state.lock:
+                    self.state.removal_summary = _joined([layer.label for layer in layers], "edits")
             elif kind == "fill":
                 references = p.get("_reference_images", ())
                 layers = app.generative_fill(
@@ -680,10 +696,11 @@ class Service:
             self.layers = previous + list(layers or [])
             self._choice_kind = kind if self.layers else ""
             if kind == "fill" and p.get("remove") and not previous:
-                self._choice_info = {
-                    "automatic": p.get("removal") == AUTO_REMOVAL,
-                    "share": getattr(self, "_removal_share", None),
-                }
+                self._choice_info = {"automatic": p.get("removal") == AUTO_REMOVAL, "share": getattr(self, "_removal_share", None),
+                                     "cast": getattr(self, "_cast_words", "")}
+            elif kind == "fill" and not previous:
+                self._choice_info = {"edit": True, "automatic": model == AUTO_EDIT,
+                                     "share": getattr(self, "_edit_share", None) if model == AUTO_EDIT else None}
             with self.state.lock:
                 self.state.state = "done"
                 self.state.fraction = 1.0
@@ -729,27 +746,138 @@ class Service:
         app = getattr(self, "_job_app", self.app)
         how = str(p.get("removal") or "default")
         self._removal_share = None
+        self._cast_words, self._cast_missed = "", ""
+        if p.get("cast", True):
+            self._take_cast_along(image, app, how)
+            self._take_rim_along(image)
         if how == AUTO_REMOVAL:
-            return self._remove_auto(image, app, seed, variations)
-        return self._remove_with(image, app, how, seed, variations)
+            layers = self._remove_auto(image, app, seed, variations)
+        else:
+            layers = self._remove_with(image, app, how, seed, variations)
+        # Both when the look-up was skipped and the rim step still took the object's edge: the rim's words then say
+        # only what it took (RIM_ONLY_WORDS), and the shadow the look-up would have found stays.
+        if self._cast_missed:
+            self._notice(CAST_MISSED[self._cast_missed])
+        if self._cast_words:
+            self._notice(cast.notice(self._cast_words))
+        return layers
 
-    def _remove_with(self, image: PCImage, app, how: str, seed: int, variations: int) -> list:
-        """One method's repairs, staged and labelled with the method for the picker."""
+    def _take_cast_along(self, image: PCImage, app, how: str) -> None:
+        """Add the selected object's own shadow and reflection to this removal's selection (see
+        ``cast``). The selection model answers on the engine Select uses. This is a courtesy: whatever
+        goes wrong, the removal goes ahead with the selection as the artist made it. ``app`` and ``how``
+        are the removal's engine and method: the look-up may start the engine only for a removal that
+        starts it anyway (``_may_start``)."""
+        from PIL import Image, ImageChops
+
+        looking = "Looking for the object's shadow and reflection..."
+        try:
+            visible, selection = self.bridge._snapshot(image)
+            if selection is None or selection.getbbox() is None or selection.getextrema()[0] > 0:
+                return
+            with self.state.lock:
+                self.state.text = looking
+
+            def cancelled() -> bool:
+                return self.state.cancel_requested
+
+            def starting(_fraction, text) -> None:
+                with self.state.lock:
+                    self.state.text = str(text)
+
+            select_app = self.app_for("select")
+            start = self._may_start(select_app, app, how, selection)
+            # Asked as before unless it may start the engine, so a look-up that may not is the courtesy it always was.
+            options = {"start": True, "progress": starting} if start else {}
+            ask, segment = self.selection.model.questions(select_app, cancelled, cast.SECONDS, **options)
+            if start:
+                with self.state.lock:
+                    self.state.text = looking   # after the engine's own start messages
+            source = Image.new("RGB", visible.size, (112, 112, 112))
+            source.paste(visible, mask=visible.getchannel("A"))
+            notes: list = []
+            found = cast.find(source, selection, ask, segment, cancelled, answers=notes)
+            for note in notes:
+                if note.get("failed"):   # a later question failed; what was found before it stands
+                    self.app.log.info("cast: %s failed (%s)", note.get("question", "a question"), note["failed"])
+        except GenerationCancelled:
+            raise
+        except Exception as err:  # noqa: BLE001 - never worth failing a removal
+            if self.state.cancel_requested:
+                raise
+            # The shadow stays, so the artist is told why when the engine was off or too busy to be asked. An engine that
+            # answered with an error of its own, or cannot answer such questions at all, is not their concern.
+            self._cast_missed = _missed(err)
+            self.app.log.info("cast: skipped (%s)", err)
+            return
+        if found.mask is None:
+            self.app.log.info("cast: nothing to add for %r", found.name)
+            return
+        image.widened = ImageChops.lighter(selection, found.mask)
+        self._cast_words = found.words
+        self.app.log.info("cast: added the %s of %r", found.words, found.name)
+
+    @staticmethod
+    def _may_start(select_app, app, how: str, selection) -> bool:
+        """Whether the shadow look-up may start the selection engine: only when it is the engine this removal runs
+        on (Select not routed elsewhere: ``app_for`` gives the same app for both) and the removal needs it, so it
+        starts moments later anyway. Never before Local, which needs no engine, nor for an engine only the look-up
+        would use. Whether the engine is one that can be started at all is the look-up's business (``wevisone``)."""
+        if select_app is not app or how == TEXTURE_REMOVAL:
+            return False
+        if how != AUTO_REMOVAL:
+            return True
+        # Automatic needs the engine when a method it tries for a selection this size is installed there, besides Local.
+        try:
+            share = sum(level * count for level, count in enumerate(selection.histogram())) / 255 / (selection.width * selection.height)
+            hidden = set(app.settings.hidden_models)
+            available = {entry.id for entry in app.installed_models("remove") if entry.id not in hidden}
+        except Exception:  # noqa: BLE001 - cannot tell: never start an engine for the look-up alone
+            return False
+        return any(method != TEXTURE_REMOVAL for method, _count in removal_plan.steps(share, available))
+
+    def _take_rim_along(self, image: PCImage) -> None:
+        """Add what is left of the object just outside the selection: its shaded edge and contact shadow, which the
+        selection model's matte stops short of and which every method otherwise leaves as a dark line (``rim``). Runs
+        after the shadow step, on its wider selection, and needs no engine. A courtesy like that step."""
+        from . import rim
+
+        try:
+            visible, selection = self.bridge._snapshot(image)
+            if selection is None or selection.getbbox() is None or selection.getextrema()[0] > 0:
+                return
+            wider = rim.widen(visible, selection)
+        except Exception as err:  # noqa: BLE001 - never worth failing a removal
+            self.app.log.info("rim: skipped (%s)", err)
+            return
+        if wider is None:
+            return
+        image.widened = wider
+        before = selection.point(lambda v: 255 if v >= 128 else 0).histogram()[255]
+        added = (wider.point(lambda v: 255 if v >= 128 else 0).histogram()[255] - before) / max(1, before)
+        # A sliver (a texture line running into the selection) is taken silently: it changes nothing the artist sees.
+        if added >= RIM_TOLD and not self._cast_words:
+            self._cast_words = RIM_ONLY_WORDS if self._cast_missed else RIM_WORDS
+        self.app.log.info("rim: added %.1f%% of the selection (the object's edge and contact shadow)", added * 100)
+
+    def _remove_with(self, image: PCImage, app, how: str, seed: int, variations: int, *, smooth_only: bool = False) -> list:
+        """One method's repairs, staged and labelled with the method for the picker. ``smooth_only``
+        (Local): only where the surroundings are smooth enough to interpolate, else no repair."""
         if how == TEXTURE_REMOVAL:
             runner = WebRunner(app, "Object Removal", TEXTURE_LABEL)
             layers = runner.run(
                 lambda progress, _preview, cancel: self.bridge.remove_with_texture(
-                    image, variations, seed, progress, cancel
+                    image, variations, seed, progress, cancel, **({"smooth_only": True} if smooth_only else {})
                 )
             )
-            runner.done("Background repaired.")
+            if layers or not smooth_only:
+                runner.done("Background repaired.")
         else:
             if how.startswith("refine:") or how == "default":
                 how = "active"
             how = self.OLD_REMOVALS.get(how, how)
-            layers = app.generative_fill(
-                image, "", "", variations, 1.0, seed, how, remove=True, as_picked=how != "active"
-            )
+            with _choices(app, **removal_plan.SETTINGS):
+                layers = app.generative_fill(image, "", "", variations, 1.0, seed, how, remove=True, as_picked=how != "active")
             for index, layer in enumerate(layers):
                 layer.name = "Object Removal" if len(layers) == 1 else f"Object Removal ({index + 1})"
             if image.pending_group:
@@ -785,6 +913,21 @@ class Service:
         doubtful: list[PCLayer] = []
         notes: list[str] = []
         failure: BaseException | None = None
+        # Where the surroundings are smooth (a studio backdrop, a wall, a clear sky) Local can interpolate them,
+        # and that repair is shown beside the rated ones: there they tend to leave a ghost or a blob.
+        smooth: list[PCLayer] = []
+        try:
+            smooth = self._remove_with(image, app, TEXTURE_REMOVAL, seed, 1, smooth_only=True)
+        except GenerationCancelled:
+            raise
+        except Exception as err:  # noqa: BLE001 - an extra; the rated methods still run
+            if self.state.cancel_requested:
+                raise
+            self.app.log.info("auto remove: no smooth repair (%s)", err)
+        image.pending, image.pending_group = [], ""
+        rejected = [layer for layer in smooth if object_remains(visible, selection, layer)]
+        smooth = [layer for layer in smooth if layer not in rejected]
+        image.layers = [layer for layer in image.layers if layer not in rejected]
         for method, count in removal_plan.steps(share, available):
             if len(kept) >= wanted:
                 break
@@ -808,9 +951,10 @@ class Service:
                 notes.append(f"{label} left the object in place, so Automatic went on to the next method.")
             doubtful.extend(left)
             kept.extend(layer for layer in staged if layer not in left)
-        if not kept and doubtful:
+        if not kept and doubtful and not smooth:
             kept = doubtful[:wanted]
             notes.append("Every method left part of the object. Try a wider selection, or pick a Method.")
+        kept.extend(smooth)
         if not kept:
             # Nothing to show: the first method's own reason (no selection, no background left) says why.
             raise failure or RuntimeError("No removal method made a repair. Choose a Method and try again.")
@@ -821,6 +965,75 @@ class Service:
             layer.name = "Object Removal" if len(kept) == 1 else f"Object Removal ({index + 1})"
             layer.visible = index == 0
         image.pending, image.pending_group = kept, "Object Removal" if len(kept) > 1 else ""
+        with self.state.lock:
+            self.state.stage = (0, 1)
+        return kept
+
+    def _edit_auto(self, image: PCImage, app, prompt: str, negative: str, strength, seed: int, variations: int) -> list:
+        """Edits from the models that rated best together for this kind of edit, the likelier one first, and FIBO in
+        both its modes, each with the settings it was rated with (``edit_plan.plan``). A model that fails gives way
+        to the next. Nothing reaches the document until every edit is staged, so each model sees the original picture."""
+        _visible, selection = self.bridge._snapshot(image)
+        share = 0.0
+        if selection is not None and selection.getbbox() is not None:
+            share = sum(level * count for level, count in enumerate(selection.histogram())) / 255 / (selection.width * selection.height)
+        self._edit_share = round(share, 5)
+        hidden = set(app.settings.hidden_models)
+        available = {entry.id for entry in app.installed_models("fill") if entry.id not in hidden}
+        plan = edit_plan.plan(prompt, share, available, selection)
+        if not plan:
+            raise RuntimeError("None of Automatic's edit models is installed on this engine. Choose a Model and try again.")
+        wanted = max(len(plan), variations) if len(plan) > 1 else variations
+        kept: list[PCLayer] = []
+        notes: list[str] = []
+        failure: BaseException | None = None
+        if selection is not None and share > 0:
+            # Room for the edit: the feather off the object's own rim, and a hull for a different object.
+            feather = float(edit_plan.SETTINGS["auto_feather_percent"]) if edit_plan.SETTINGS["auto_feather"] else 0.0
+            # A box drawn for something new is already the room it gets: only the feather moves outside it.
+            found = edit_plan.shape(prompt, share, selection)
+            fitted, room = edit_plan.roomy(selection, "look" if found == "spot" else found, feather)
+            if fitted is not None:
+                image.widened = fitted
+            if room:
+                notes.append(edit_plan.ROOM_NOTICE)
+        with self.state.lock:
+            self.state.stage_word = "Edit"
+        for position, step in enumerate(plan):
+            # The results are shared out in order: three wanted from two steps is two and one.
+            count = (wanted - len(kept) + len(plan) - position - 1) // (len(plan) - position)
+            if count < 1:
+                break
+            label = step.label or edit_plan.short_label(step.model, self._method_name(app, step.model))
+            with self.state.lock:
+                self.state.stage = (len(kept), wanted)
+            try:
+                with _choices(app, **step.settings):
+                    # A step may word the instruction for its model (Qwen told where a drawn box is) and run another seed.
+                    # A negative seed is the panel's "random": each edit then draws its own, as every result did, so the
+                    # second FIBO Replace is not -1 + OTHER_SEED, the same picture on every run.
+                    staged = app.generative_fill(image, step.prompt or prompt, negative, count, strength,
+                                                 seed + step.seed if seed >= 0 else seed, step.model, remove=False)
+            except (GenerationCancelled, NothingSelected):
+                raise
+            except Exception as err:  # the next model still gets its turn
+                if self.state.cancel_requested:
+                    raise
+                staged, failure = [], failure or err
+                notes.append(f"{label} could not make an edit ({describe_error(err)}). Automatic went on to the next model.")
+            image.pending, image.pending_group = [], ""  # held here until every edit is ready
+            for layer in staged:
+                layer.label = label
+            kept.extend(staged)
+        if not kept:
+            raise failure or RuntimeError("No edit model made a result. Choose a Model and try again.")
+        for note in notes:
+            self._notice(note)
+        base = re.sub(r" \(\d+\)$", "", kept[0].name)
+        for index, layer in enumerate(kept):
+            layer.name = base if len(kept) == 1 else f"{base} ({index + 1})"
+            layer.visible = index == 0
+        image.pending, image.pending_group = kept, base if len(kept) > 1 else ""
         with self.state.lock:
             self.state.stage = (0, 1)
         return kept
@@ -1033,23 +1246,22 @@ class Service:
         self._clear_choices()
 
     def _log_choice(self, which: str) -> None:
-        """One line per removal the artist kept or discarded: the methods offered and the one kept.
-        It stays in this profile and holds no pixels; the ratings behind Automatic can grow from it."""
+        """One line per removal or automatic edit the artist kept or discarded: the methods offered and
+        the one kept. It stays in this profile and holds no pixels or prompts; the ratings behind
+        Automatic can grow from it."""
         labels = [layer.label for layer in self.layers]
         if self._choice_kind != "fill" or not any(labels):
             return
         info = getattr(self, "_choice_info", None) or {}
         shown = self.state.shown
         kept = labels[shown] if which == "selected" and 0 <= shown < len(labels) else which
-        row = {
-            "t": round(time.time()),
-            "kept": kept,
-            "offered": labels,
-            "automatic": bool(info.get("automatic")),
-            "share": info.get("share"),
-        }
+        row = {"t": round(time.time()), "kept": kept, "offered": labels, "automatic": bool(info.get("automatic")),
+               "share": info.get("share")}
+        if info.get("cast"):
+            row["cast"] = info["cast"]  # the shadow or reflection Remove took along with the object
+        name = "edit-choices.jsonl" if info.get("edit") else "removal-choices.jsonl"
         try:
-            with (self.bridge.profile / "removal-choices.jsonl").open("a", encoding="utf-8") as log:
+            with (self.bridge.profile / name).open("a", encoding="utf-8") as log:
                 log.write(json.dumps(row) + "\n")
         except (OSError, AttributeError, TypeError):
             pass  # a note for later tuning; never worth failing a Keep
@@ -1078,13 +1290,50 @@ class Service:
             return False
 
 
-def _joined(labels: list[str]) -> str:
-    """The panel's done line after an automatic removal: which methods made the repairs."""
+# What the artist is told when only the object's own edge and contact shadow beside the selection went too.
+RIM_WORDS = "edge and shadow"
+# The same when the shadow look-up did not run (its CAST_MISSED notice is shown too): only what the rim step took,
+# so the notice does not read as if the object's shadow had been looked for and removed.
+RIM_ONLY_WORDS = "edge and contact shadow"
+RIM_TOLD = 0.03   # the share of the selection the rim step adds before the artist is told; under it, a texture line or two
+# Why a removal went ahead without looking for the object's shadow and reflection, when the artist should know.
+CAST_MISSED = {
+    "off": "The selection engine is not running, so the object's shadow and reflection were not looked for. "
+           "Select them too if they should go.",
+    "busy": cast.BUSY,
+}
+
+
+def _missed(err: BaseException) -> str:
+    """"off", "busy" or "" for an error that stopped the shadow look-up (see CAST_MISSED)."""
+    from .wevisone import EngineBusy, EngineNotRunning, refused
+
+    if isinstance(err, EngineNotRunning):
+        return "off"
+    if isinstance(err, (EngineBusy, BackendUnavailable)):
+        return "busy"
+    if type(err) is ComfyApiError and not err.status:
+        # Not reached. Refused: the engine stopped between its health check and the questions. Otherwise a wait
+        # that ran out or was interrupted: busy.
+        return "off" if refused(err) else "busy"
+    return ""
+
+
+def _choices(app, **options):
+    """The app's own choices in place of saved settings while a job runs (``App.choosing``). An app
+    without it, such as a test double, runs with what it has."""
+    if getattr(type(app), "choosing", None) is None:
+        return contextlib.nullcontext()
+    return app.choosing(**options)
+
+
+def _joined(labels: list[str], noun: str = "repairs") -> str:
+    """The panel's done line after an automatic removal or edit: which methods made the results."""
     names = [label for label in labels if label]
     if len(names) < 2:
         return ""
     count = {2: "Two", 3: "Three", 4: "Four", 5: "Five"}.get(len(names), str(len(names)))
-    return f"{count} repairs: {', '.join(names[:-1])} and {names[-1]}. Keep the better one."
+    return f"{count} {noun}: {', '.join(names[:-1])} and {names[-1]}. Keep the {'better' if len(names) == 2 else 'best'} one."
 
 
 SETUP_STEPS = {

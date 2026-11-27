@@ -27,10 +27,12 @@ from PIL import Image, ImageDraw
 
 from openfill.remote_models import H3_IMAGE_ID
 
-from . import ui
+from . import edit_plan, ui
+from .cast import OPTION as CAST_OPTION
+from .edit_plan import AUTO_EDIT
 from .menu import Watcher
 from .modelinfo import choose_card_line, download_card_line, hardware_line, needed_by
-from .removal_advice import AUTO, SCENE_PLACEHOLDER, SELECTION_HINT, removal_scenes
+from .removal_advice import AUTO, SCENE_PLACEHOLDER, removal_scenes, selection_hint
 from .service import REMOVE_SELECTION, TEXTURE_LABEL, TEXTURE_REMOVAL, Service
 from .tips import CONTROLS
 from .ui import ACCENT, BAD, BG, CW, DIM, LABEL_W, LINE, OK, PAD, PANEL, TEXT, WARN, W, photo
@@ -519,7 +521,11 @@ class Bar:
         self._advice = {}
         self._quick_remove = ""
         self.scene_choices = {}
-        self.remove_line = ui.small(m, SELECTION_HINT, wrap=CW)
+        self.remove_cast = ui.Checkbox(m, CAST_OPTION, CW)
+        # Both panels share this choice (web.Api.options). This panel's own file is where older builds kept it.
+        self.remove_cast.set(self.api.option("removeCast", self.prefs.get("removeCast", True)))
+        self.remove_cast.var.trace_add("write", lambda *_a: self._option_changed("removeCast", self.remove_cast.get()))
+        self.remove_line = ui.small(m, selection_hint(self.remove_cast.get()), wrap=CW)
 
         from .expand_view import ExpandView
 
@@ -587,6 +593,7 @@ class Bar:
         self.progress.pack(fill="x", pady=(8, 0))
         self.job_text = ui.text(j, "", f.small, DIM, PANEL, CW - 24)
         self.job_text.pack(fill="x", pady=(8, 0))
+        self.job_notes = ui.small(j, "", WARN, PANEL, CW - 24)  # JobState.notices; packed only while there are any
         self.preview = tk.Label(j, bg=PANEL, bd=0, highlightthickness=0)
         self.thumbs = ui.frame(j, PANEL)
         ui.caption(self.thumbs, "Generated results", PANEL).pack(anchor="w")
@@ -642,6 +649,7 @@ class Bar:
         self.edit_tools.set_tips(lambda key: c.get(f"tool.{key}", ""))
         ui.tip(self.context_row, c["context"])
         self.remove_scene_box.set_tips(c["remove.kind"], self._scene_tip)
+        ui.tip(self.remove_cast, c["remove.cast"])
         ui.tip(self.prompt, c["prompt"])
         self.size_seg.set_tips(lambda key: c["size"] if key else "")
         self.target_seg.set_tips(lambda key: c.get(f"target.{key}", ""))
@@ -1116,7 +1124,7 @@ class Bar:
         if not self.service.app_for(key).settings.remote_fibo and key in dict(EDIT_TOOLS):
             parts.insert(1, self.edit_tools)
         if key == "remove":
-            parts.extend((self.remove_scene_row, self.remove_line))
+            parts.extend((self.remove_scene_row, self.remove_line, self.remove_cast))
         if key == "expand":
             parts.append(self.expand_view)
         if key in ("fill", "expand", "txt2img"):
@@ -1156,6 +1164,19 @@ class Bar:
         self.variations.set(n)
         self.var_seg.set(n)
         self.prefs["variations"] = n
+
+    def _option_changed(self, name: str, value: bool) -> None:
+        """A checkbox both panels show was ticked or unticked: keep it for the browser view and the next
+        start too. This panel's own file still gets it, which is where a build before the sharing looks."""
+        self.prefs[name] = value
+        self.api.set_options({name: value})
+
+    def _follow_options(self) -> None:
+        """Show what is saved for the shared checkboxes; the browser view may have changed one."""
+        for name, box in (("removeCast", self.remove_cast), ("selectWhole", self.select_view_panel.whole)):
+            saved = self.api.option(name, box.get())
+            if saved != box.get():
+                box.set(saved)
 
     def _fetch_thumbnail(self, key: tuple) -> None:
         """The image for the Expand editor, read once per document size (off the UI thread)."""
@@ -1225,6 +1246,8 @@ class Bar:
             self.prefs["removal"] = label
             return
         model_id = self._model_ids.get(label)
+        if self.tab.get() == "fill":
+            self.prefs["editModel"] = AUTO if model_id == AUTO_EDIT else ""  # a picked model ends Automatic
         facts = self.refresher.get()
         available = facts.get("models") or {}
         edit_models = {i for i, _n in available.get(self.tab.get(), [])}
@@ -1280,7 +1303,7 @@ class Bar:
                             return
                         removal = self._advice["method"]
                         body.update(adviceKey=self._advice["key"], adviceSource=self._advice["source"])
-                    body.update(removal=removal)
+                    body.update(removal=removal, cast=self.remove_cast.get())
                 self.service.start("fill", body)
             elif kind == "expand":
                 left, top, right, bottom = self.expand_view.margins()
@@ -1431,6 +1454,11 @@ class Bar:
                 else {name: i for i, name in models.get(tab, [])}
             )
             wanted = facts.get("active_name") or ""
+            if tab == "fill" and edit_plan.offered(set(choices.values())):
+                # Automatic leads the menu and is the choice until the artist picks a model.
+                choices = {AUTO: AUTO_EDIT, **choices}
+                if self.prefs.get("editModel", AUTO) == AUTO:
+                    wanted = AUTO
         self._model_ids = choices
         names = list(choices)
         if self.model_box.values != names:
@@ -1463,7 +1491,8 @@ class Bar:
             scene = self.scene_choices.get(self.remove_scene)
             if scene and scene["method"] and scene["method"] != choices.get(current):
                 self.remove_scene, scene = "", None
-            tip = scene["tip"] if scene else SELECTION_HINT
+            hint = selection_hint(self.remove_cast.get())  # it promises the shadow look-up only while that is on
+            tip = scene["tip"] if scene else hint
             if self.remove_scene == AUTO:
                 if self.collapsed:
                     self._advice = {}
@@ -1475,7 +1504,7 @@ class Bar:
                     self._advice = {"status": "loading", "tip": "Checking available removal methods…"}
                 else:
                     self._advice = self.service.removal_advice(available)
-                tip = self._advice.get("tip", SELECTION_HINT)
+                tip = self._advice.get("tip", hint)
                 label = next((n for n, i in choices.items() if i == self._advice.get("displayMethod")), "")
                 waiting_for_advice = self._advice.get("status") != "ready" or not label
                 if label:
@@ -1592,6 +1621,7 @@ class Bar:
     def _update(self) -> None:
         facts = self.refresher.get()
         self.sections.apply(self.service.app.settings.panel_layout)
+        self._follow_options()
         self._update_context()
         self._fill_models()
         if self._quick_remove:
@@ -1740,7 +1770,8 @@ class Bar:
         self.setup.lift_corners()
 
     def _update_job(self, st: dict[str, Any]) -> None:
-        shown = st["state"] != "idle" or bool(st["variations"])
+        # A notice before any job (a settings file that could not be read) needs the card too, or it is never seen here.
+        shown = st["state"] != "idle" or bool(st["variations"]) or bool(st.get("notices"))
         if self._shown.get("job") != shown:
             self._shown["job"] = shown
             self._layout_main()
@@ -1767,6 +1798,16 @@ class Bar:
             text, color, font = st["message"], BAD, self.fonts.body
         if (self.job_text.cget("text"), str(self.job_text.cget("fg"))) != (text, color):
             self.job_text.configure(text=text, fg=color, font=font)
+        # What the service adds about this job: a shadow taken along, an engine too busy to look for one, what
+        # Automatic did. The browser view lists the same notices; without them a wider removal would be silent here.
+        notes = "\n".join(st.get("notices") or ())
+        if self.job_notes.cget("text") != notes:
+            self.job_notes.configure(text=notes)
+            if notes:
+                self.job_notes.pack(fill="x", pady=(8, 0), after=self.job_text)
+            else:
+                self.job_notes.pack_forget()
+            self.job.lift_corners()
         self.progress.set(st["fraction"], OK if st["state"] == "done" else ACCENT)
         self._update_preview(st)
         self._update_variations(st)

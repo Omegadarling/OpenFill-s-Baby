@@ -14,7 +14,7 @@ from openfill.supervisor import read_json, write_json
 
 from .bridge import PCImage
 from .selection_advice import document_key
-from .wevisone import DEFAULT_QUERY, WeVisOne
+from .wevisone import DEFAULT_QUERY, NothingFound, WeVisOne
 
 STALE = "The document or selection changed. Use the updated preview and try again."
 OPERATIONS = {"replace": "new", "add": "add", "subtract": "subtract"}
@@ -170,6 +170,8 @@ class Selection:
             return
         if action not in ("click", "box", "describe") or params.get("operation", "replace") not in OPERATIONS:
             raise ValueError("Choose a valid selection action.")
+        if type(params.get("whole", True)) is not bool:
+            raise ValueError("Attached parts must be on or off.")
         if self.key != params.get("key") or self.source is None:
             raise ValueError(STALE)
         query = params.get("query", "")
@@ -214,22 +216,34 @@ class Selection:
                 self.grow_pixels = pixels
             return message
         progress(0.05, "Finding the object with WeVisOne-VL…")
-        mask = self.model.mask(
-            app,
-            self.source,
-            params.get("query", "").strip() or DEFAULT_QUERY,
-            params.get("point") if action == "click" else None,
-            progress,
-            cancel,
-            box=params["box"] if action == "box" else None,
-        )
+        described = params.get("query", "").strip()
+        point = params.get("point") if action == "click" else None
+        box = params["box"] if action == "box" else None
+        unused = False
+        try:
+            mask = self.model.mask(app, self.source, described or DEFAULT_QUERY, point, progress, cancel, box=box)
+        except NothingFound:
+            if not described or action == "describe":
+                raise
+            # The field keeps its text after a description was used: the click or the box says what is meant now.
+            progress(0.1, "Nothing there matches the description. Looking for any object…")
+            mask = self.model.mask(app, self.source, DEFAULT_QUERY, point, progress, cancel, box=box)
+            unused = True
         index, doc = active(client, key)
         size = (doc["width"], doc["height"])
         if mask.size != size:
             mask = mask.resize(size, Image.Resampling.BILINEAR)
+        operation = OPERATIONS[params.get("operation", "replace")] if doc.get("hasSelection") else "new"
+        with_parts = missed = False
+        # Subtract trims a part away: what the model counts as attached to that part is no part of the trim.
+        if params.get("whole", True) and operation != "subtract" and self.source.size == size:
+            # The bin's wheel, the skier's skis, the umbrella in a hand: asked for, they come along.
+            progress(0.7, "Looking for parts of the object the selection left out…")
+            completed = self.model.whole(app, self.source, mask, described if action == "describe" else "", cancel)
+            with_parts, mask = completed is not mask, completed
+            missed = not with_parts and getattr(self.model, "parts_missed", False)
         guide = Image.new("RGBA", size, "white")
         guide.putalpha(mask)
-        operation = OPERATIONS[params.get("operation", "replace")] if doc.get("hasSelection") else "new"
         begin_commit()
         active(client, key)
         scratch, layer = self.bridge._open(guide, "mask")
@@ -257,8 +271,13 @@ class Selection:
                     self.matte_key, self.matte = key_for(index, updated), known_mask
         finally:
             self.bridge._close(scratch)
-        return {
+        message = {
             "new": "Object selected.",
             "add": "Added to the selection.",
             "subtract": "Subtracted from the selection.",
-        }[operation]
+        }[operation][:-1] + (", with its attached parts." if with_parts else ".")
+        if unused:
+            message += " Nothing there matched the description, so it was not used."
+        if missed:
+            message += " The engine was too busy to look for attached parts."
+        return message

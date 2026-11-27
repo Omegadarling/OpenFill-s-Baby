@@ -256,6 +256,65 @@ class AutomaticTests(unittest.TestCase):
         _image, layers = self.run_auto(svc, variations=3)
         self.assertEqual([layer.label for layer in layers], ["RORem", "Qwen", "LaMa"])
 
+    def local_repair(self, svc, outcome):
+        """Give the bridge a Local repair: ``outcome`` is a picture, an exception, or None where the surroundings
+        are too textured to interpolate."""
+        asked = []
+
+        def remove_with_texture(image, variations, seed, progress, cancelled, *, smooth_only=False):
+            asked.append((variations, smooth_only))
+            if isinstance(outcome, BaseException):
+                raise outcome
+            if outcome is None:
+                return []
+            layer = staged(outcome, svc.bridge.selection)
+            image.pending, image.pending_group = [layer], ""
+            image.layers.append(layer)
+            return [layer]
+
+        svc.bridge.remove_with_texture = remove_with_texture
+        svc.app.job_state = svc.state   # as Service sets it: Local reports its progress through the job
+        return asked
+
+    def test_smooth_surroundings_add_locals_repair_beside_the_rated_two(self):
+        svc = service(self.profile, {ROREM_ID: wall(), QWEN21_LIGHTNING_ID: wall(), LAMA_ID: wall()})
+        asked = self.local_repair(svc, wall())
+        image, layers = self.run_auto(svc)
+        self.assertEqual([layer.label for layer in layers], ["RORem", "Qwen", "Local"])
+        self.assertEqual([layer.name for layer in layers], ["Object Removal (1)", "Object Removal (2)", "Object Removal (3)"])
+        self.assertEqual([layer.visible for layer in layers], [True, False, False])
+        self.assertEqual((image.pending, image.pending_group), (layers, "Object Removal"))
+        self.assertEqual(asked, [(1, True)])   # one repair, and only where it can interpolate
+        self.assertEqual(svc.calls, [(ROREM_ID, 1), (QWEN21_LIGHTNING_ID, 1)])   # the rated methods are not cut short
+        self.assertEqual(_joined([layer.label for layer in layers]), "Three repairs: RORem, Qwen and Local. Keep the best one.")
+
+    def test_textured_surroundings_or_a_failing_local_repair_leave_the_two(self):
+        for outcome in (None, RuntimeError("no scratch document")):
+            svc = service(self.profile, {ROREM_ID: wall(), QWEN21_LIGHTNING_ID: wall(), LAMA_ID: wall()})
+            self.local_repair(svc, outcome)
+            _image, layers = self.run_auto(svc)
+            self.assertEqual([layer.label for layer in layers], ["RORem", "Qwen"])
+            self.assertEqual(svc.state.notices, [])
+
+    def test_a_smooth_repair_that_leaves_the_object_is_not_shown(self):
+        svc = service(self.profile, {ROREM_ID: wall(), QWEN21_LIGHTNING_ID: wall(), LAMA_ID: wall()})
+        self.local_repair(svc, self.picture)
+        image, layers = self.run_auto(svc)
+        self.assertEqual([layer.label for layer in layers], ["RORem", "Qwen"])
+        self.assertEqual(len(image.layers), 2)
+
+    def test_a_smooth_repair_stands_when_no_engine_method_makes_one(self):
+        svc = service(self.profile, {ROREM_ID: RuntimeError("down"), QWEN21_LIGHTNING_ID: RuntimeError("down"), LAMA_ID: RuntimeError("down")})
+        self.local_repair(svc, wall())
+        image, layers = self.run_auto(svc)
+        self.assertEqual([layer.label for layer in layers], ["Local"])
+        self.assertEqual([layer.name for layer in layers], ["Object Removal"])
+        self.assertEqual((image.pending, image.pending_group), (layers, ""))
+        svc = service(self.profile, {ROREM_ID: self.picture, QWEN21_LIGHTNING_ID: self.picture, LAMA_ID: self.picture})
+        self.local_repair(svc, wall())
+        _image, layers = self.run_auto(svc)
+        self.assertEqual([layer.label for layer in layers], ["Local"])   # better than two repairs that left the object
+
     def test_a_large_selection_takes_both_results_from_the_first_method_in_one_call(self):
         svc = service(self.profile, {ROREM_ID: wall(), QWEN21_LIGHTNING_ID: wall(), LAMA_ID: wall()})
         svc.bridge.picture, svc.bridge.selection = scene((60, 40, 180, 160))  # 30% of the picture

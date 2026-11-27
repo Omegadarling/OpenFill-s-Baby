@@ -96,6 +96,76 @@ def texture_donors(source: Image.Image, support: Image.Image) -> Image.Image | N
     return donors
 
 
+# The interpolation's directions, in the order Local tries them (the first is its first repair).
+SMOOTH_DIRECTIONS = (0.5, 0.85, 0.15, 0.70, 0.30)
+# The ring the direction is read from, in px of the 256 px analysis copy: past the 3 px guard the
+# smooth gate leaves round the hole, out to 24 px (where the analyst measured it).
+DIRECTION_RING = (3, 24)
+# Gradients are compared between pixels this far apart after a blur of this radius, so paint
+# grain does not count, only the layering of the surface.
+DIRECTION_STEP = 4
+DIRECTION_BLUR = 3
+# Vertical share of the ring's gradient above LAYERED: horizontal layers (a studio sweep, a
+# horizon), interpolate along rows with weight LAYERED_WEIGHT; below 1 - LAYERED: vertical ones
+# (a wall lit from the side), along columns. In between the surroundings show no direction.
+LAYERED = 0.6
+LAYERED_WEIGHT = 0.9
+
+
+def ring_direction(source: Image.Image, selection: Image.Image) -> float | None:
+    """How much of the gradient in the ring round ``selection`` runs vertically (rows differ),
+    from 0 to 1: near 1 the surroundings are horizontal layers, near 0 vertical ones. None when
+    the ring shows no gradient at all (or there is no ring)."""
+    analysis = source.convert("RGB").convert("L")
+    analysis.thumbnail((256, 256), Image.Resampling.BOX)
+    hole = selection.resize(analysis.size, Image.Resampling.BOX).point(lambda value: 255 if value else 0)
+    near, far = DIRECTION_RING
+    ring = ImageChops.subtract(grow_support(hole, far), grow_support(hole, near))
+    if "A" in source.getbands():
+        opaque = source.getchannel("A").resize(analysis.size, Image.Resampling.BOX)
+        ring = ImageChops.darker(ring, opaque.point(lambda value: 255 if value == 255 else 0))
+    blurred = analysis.filter(ImageFilter.GaussianBlur(DIRECTION_BLUR))
+    width, height, step = analysis.width, analysis.height, DIRECTION_STEP
+    if width <= step or height <= step:
+        return None
+    # Differences between pixels a step apart, counted where both ends lie in the ring (no wrap).
+    energies = []
+    for shift in ((step, 0), (0, step)):
+        far_box = (shift[0], shift[1], width, height)
+        near_box = (0, 0, width - shift[0], height - shift[1])
+        change = ImageChops.difference(blurred.crop(far_box), blurred.crop(near_box))
+        both = ImageChops.darker(ring.crop(far_box), ring.crop(near_box))
+        counts = change.histogram(mask=both)
+        total = sum(counts)
+        if not total:
+            return None
+        energies.append(sum(level * count for level, count in enumerate(counts)) / total)
+    across, down = energies
+    if across + down < 1e-6:
+        return None
+    return down / (across + down)
+
+
+def interpolation_direction(source: Image.Image, selection: Image.Image) -> float:
+    """smooth_background's ``horizontal`` weight that follows the surroundings: along the layers
+    of a graded sweep, across the light on a side-lit wall, and even (0.5) where they show none."""
+    share = ring_direction(source, selection)
+    if share is None:
+        return 0.5
+    if share > LAYERED:
+        return LAYERED_WEIGHT
+    if share < 1 - LAYERED:
+        return round(1 - LAYERED_WEIGHT, 2)
+    return 0.5
+
+
+def smooth_directions(source: Image.Image, selection: Image.Image) -> tuple[float, ...]:
+    """The directions Local tries, the one the surroundings suggest first. Where they suggest
+    none this is SMOOTH_DIRECTIONS unchanged; a near duplicate of the first is dropped."""
+    first = interpolation_direction(source, selection)
+    return (first, *(value for value in SMOOTH_DIRECTIONS if abs(value - first) > 0.1))
+
+
 def smooth_background(
     source: Image.Image, selection: Image.Image, progress, cancelled, *, horizontal: float = 0.5, boundary_only=False
 ) -> Image.Image | None:

@@ -255,48 +255,52 @@ class ComfyBackend(Backend):
     ) -> list[bytes]:
         timeout = self.request_timeout or self._estimate(steps, batch, pixels, model)
         started = time.monotonic()
-        deadline = started + timeout
         self._first_step = 0.0
-        self._report(progress, 0.02, "Submitting workflow...")
-        try:
-            prompt_id = self.client.queue_prompt(graph)
-            self._prompt_id = prompt_id
-        except ComfyApiError as err:
-            raise self._translate_queue_error(err, graph) from err
-        self._progress = Progress(0.0, "queued", True)
-        queued = time.monotonic()
-        if self.log:
-            self.log.info("queued prompt %s (timeout %.0fs, %d steps x %d)", prompt_id, timeout, steps, batch)
-        try:
-            entry = self.client.wait_for(
-                prompt_id,
-                workflow.total_steps(graph),
-                deadline,
-                self._wrap(progress),
-                preview=preview,
-                cancel=cancel,
-                activity_extension=0.0 if self.request_timeout else ACTIVITY_EXTENSION,
-                wait_for_queue=bool(model and model.effective_template in workflow.SELECTION_EDIT_TEMPLATES),
-                shared_queue=self.shared_queue,
-            )
-        except ComfyExecutionError as err:
-            if err.is_unsupported_gpu:
-                raise UnsupportedGpu(str(err)) from err
-            if err.is_out_of_memory:
-                raise OutOfMemory(str(err)) from err
-            raise WorkflowRejected(f"{err.node_type or 'node'}: {err}") from err
-        except ComfyApiError as err:
-            text = str(err)
-            if "cancelled" in text or "interrupted" in text:
-                raise GenerationCancelled(text) from err
-            if "timed out" in text:
-                self.cancel()
-                raise GenerationTimeout(f"no result after {time.monotonic() - started:.0f} s") from err
-            if self._connection_lost(err):
-                raise BackendUnavailable(CONNECTION_LOST) from err
-            raise BackendUnavailable(text) from err
-        finally:
-            self._progress = Progress(1.0, "done", False)
+        for attempt in (1, 2):
+            deadline = time.monotonic() + timeout
+            self._report(progress, 0.02, "Submitting workflow...")
+            try:
+                prompt_id = self.client.queue_prompt(graph)
+                self._prompt_id = prompt_id
+            except ComfyApiError as err:
+                raise self._translate_queue_error(err, graph) from err
+            self._progress = Progress(0.0, "queued", True)
+            queued = time.monotonic()
+            if self.log:
+                self.log.info("queued prompt %s (timeout %.0fs, %d steps x %d)", prompt_id, timeout, steps, batch)
+            try:
+                entry = self.client.wait_for(
+                    prompt_id,
+                    workflow.total_steps(graph),
+                    deadline,
+                    self._wrap(progress),
+                    preview=preview,
+                    cancel=cancel,
+                    activity_extension=0.0 if self.request_timeout else ACTIVITY_EXTENSION,
+                    wait_for_queue=bool(model and model.effective_template in workflow.SELECTION_EDIT_TEMPLATES),
+                    shared_queue=self.shared_queue,
+                )
+                break
+            except ComfyExecutionError as err:
+                if attempt == 1 and err.is_loader_exhausted and self._clear_cache(progress):
+                    continue  # the same workflow once more, now that the server can load pictures again
+                if err.is_unsupported_gpu:
+                    raise UnsupportedGpu(str(err)) from err
+                if err.is_out_of_memory:
+                    raise OutOfMemory(str(err)) from err
+                raise WorkflowRejected(f"{err.node_type or 'node'}: {err}") from err
+            except ComfyApiError as err:
+                text = str(err)
+                if "cancelled" in text or "interrupted" in text:
+                    raise GenerationCancelled(text) from err
+                if "timed out" in text:
+                    self.cancel()
+                    raise GenerationTimeout(f"no result after {time.monotonic() - started:.0f} s") from err
+                if self._connection_lost(err):
+                    raise BackendUnavailable(CONNECTION_LOST) from err
+                raise BackendUnavailable(text) from err
+            finally:
+                self._progress = Progress(1.0, "done", False)
         finished = time.monotonic()
         self._report(progress, 0.99, "Downloading result...")
         try:
@@ -317,6 +321,18 @@ class ComfyBackend(Backend):
         if not images:
             raise WorkflowRejected("the workflow finished without producing an image")
         return images
+
+    def _clear_cache(self, progress: ProgressCallback | None) -> bool:
+        """After the server's image loader ran out of address space (``is_loader_exhausted``): clear
+        its cache, which keeps its models loaded. True when the workflow is worth one more try."""
+        self._report(progress, 0.02, "Clearing the engine's picture cache...")
+        try:
+            self.client.clear_cache()
+        except ComfyApiError:
+            return False
+        if self.log:
+            self.log.info("the server's image loader had no address space left: cache cleared, trying once more")
+        return True
 
     def _estimate(self, steps: int, batch: int, pixels: int, model: ModelSpec | None) -> float:
         """Automatic timeout: sampling time plus the load time of the model

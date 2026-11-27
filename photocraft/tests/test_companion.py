@@ -1323,6 +1323,9 @@ class ServiceRemoveTests(unittest.TestCase):
         stub = SimpleNamespace(app=App(), OLD_REMOVALS=Service.OLD_REMOVALS)
         stub._method_name = Service._method_name
         stub._remove_with = lambda *args: Service._remove_with(stub, *args)
+        # Remove first takes the object's shadow, reflection and rim along; test_cast and test_rim cover those.
+        stub._take_cast_along = lambda image, app, how: None
+        stub._take_rim_along = lambda image: None
         image = SimpleNamespace(pending_group="g")
         layers = Service._remove(stub, image, {"removal": removal} if removal is not None else {}, 5, 2)
         self.assertEqual(len(calls), 1)  # one pass, never LaMa then a second model

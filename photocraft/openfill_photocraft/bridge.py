@@ -37,7 +37,14 @@ from openfill.backend import GenerationCancelled
 from openfill.geometry import Rect, flatten_over_mean, plan_native_removal
 
 from .control import ControlClient, ControlError
-from .local_removal import grow_support, removal_mask, smooth_background, texture_donors
+from .local_removal import (
+    SMOOTH_DIRECTIONS,
+    grow_support,
+    removal_mask,
+    smooth_background,
+    smooth_directions,
+    texture_donors,
+)
 from .removal_blend import blend_reconstruction, match_h3_lighting
 from .removal_structure import structured_background
 from .removal_variations import distinct_repairs, render_views
@@ -94,6 +101,7 @@ class PCImage:
     shift: tuple[int, int] = (0, 0)  # where the job's original (0, 0) is now (an expand grows the canvas)
     excluded_layers: tuple[int, ...] = ()  # existing choices omitted from an appended edit's input
     rgb_profile: bytes | None = None  # RGB space of the exported source pixels
+    widened: Image.Image | None = None  # this job's selection with more added (Remove: the object's shadow or reflection)
 
     def _inspect(self) -> dict:
         self.bridge.activate(self)
@@ -274,6 +282,9 @@ class PhotoCraftBridge:
         return Rect(0, 0, int(d["width"]), int(d["height"]))
 
     def selection_rect(self, image: PCImage) -> Rect | None:
+        if image.widened is not None:
+            box = image.widened.getbbox()
+            return Rect(box[0], box[1], box[2] - box[0], box[3] - box[1]) if box else None
         d = image._inspect()
         bounds = d.get("selectionBounds") if d.get("hasSelection") else None
         if not bounds:
@@ -282,6 +293,13 @@ class PhotoCraftBridge:
         return Rect(x, y, w, h) if w > 0 and h > 0 else None
 
     def _snapshot(self, image: PCImage) -> tuple[Image.Image, Image.Image | None]:
+        """The canvas and this job's selection: the document's, or the job's widened one."""
+        visible, selection = self._read_snapshot(image)
+        if image.widened is not None and image.widened.size == visible.size:
+            return visible, image.widened
+        return visible, selection
+
+    def _read_snapshot(self, image: PCImage) -> tuple[Image.Image, Image.Image | None]:
         """Read the canvas and selection through a duplicate without changing the source."""
         self.commit(image)
         revision = self._revision(image)
@@ -360,8 +378,10 @@ class PhotoCraftBridge:
     def mask_png_from_bytes(self, rect: Rect, pixels: bytes) -> bytes:
         return png.encode(rect.width, rect.height, pixels, 1)
 
-    def remove_with_texture(self, image: PCImage, variations: int, seed: int, progress, cancelled) -> list[PCLayer]:
-        """Synthesize from surrounding pixels in scratch documents, then stage the masked results."""
+    def remove_with_texture(self, image: PCImage, variations: int, seed: int, progress, cancelled, *, smooth_only=False) -> list[PCLayer]:
+        """Synthesize from surrounding pixels in scratch documents, then stage the masked results.
+        With ``smooth_only``, only where the surroundings are smooth enough to interpolate (a studio
+        backdrop, a wall, a clear sky): elsewhere nothing is staged and the list is empty."""
         visible, selection = self._snapshot(image)
         bounds = selection.getbbox() if selection is not None else None
         if bounds is None:
@@ -374,7 +394,11 @@ class PhotoCraftBridge:
         box = (context.x, context.y, context.right, context.bottom)
         source = visible.crop(box)
         alpha = removal_mask(selection.crop(box))
-        results = self._sample_texture(image, source, alpha, variations, seed, progress, cancelled)
+        results = self._sample_texture(
+            image, source, alpha, variations, seed, progress, cancelled, smooth_only=smooth_only, follow_surroundings=True
+        )
+        if not results:
+            return []
         results = distinct_repairs(results, source, alpha)
         return self.insert_results(image, results, context, "Object Removal", 0, None, mask_pixels=alpha.tobytes())
 
@@ -433,7 +457,8 @@ class PhotoCraftBridge:
             results.append(buffer.getvalue())
         return results
 
-    def _sample_texture(self, image, source, alpha, variations, seed, progress, cancelled, *, sample_detail=False) -> list[bytes]:
+    def _sample_texture(self, image, source, alpha, variations, seed, progress, cancelled, *, sample_detail=False,
+                        smooth_only=False, follow_surroundings=False) -> list[bytes]:
         # Every selected pixel is excluded from the donor pool. Apply the artist's
         # soft edge only once, on the result layer in the original document.
         support = grow_support(alpha, 2)
@@ -442,14 +467,19 @@ class PhotoCraftBridge:
                 "No visible background surrounds this selection. To erase to transparency, clear the selection on the object's layer."
             )
         smooth_results = []
-        for index, horizontal in enumerate((0.5, 0.85, 0.15, 0.70, 0.30)[:variations]):
+        # Local's own repair interpolates first in the direction the surroundings are layered (a
+        # studio sweep along its rows, a side-lit wall along its columns); see smooth_directions.
+        # The clean plate made for an AI method keeps the fixed order.
+        directions = smooth_directions(source, alpha) if follow_surroundings else SMOOTH_DIRECTIONS
+        for index, horizontal in enumerate(SMOOTH_DIRECTIONS[:variations]):
 
             def report(fraction, message, i=index):
                 progress((i + fraction) / variations, f"Repair {i + 1}/{variations}: {message}")
 
             smooth = structured_background(source, alpha, report, cancelled, horizontal=horizontal)
             if smooth is None:
-                smooth = smooth_background(source, alpha, report, cancelled, horizontal=horizontal)
+                along = directions[index] if index < len(directions) else horizontal
+                smooth = smooth_background(source, alpha, report, cancelled, horizontal=along)
             if smooth is None:
                 break  # This scene needs sampled texture.
             if sample_detail:
@@ -465,7 +495,7 @@ class PhotoCraftBridge:
             buffer = _io.BytesIO()
             smooth.save(buffer, format="PNG", compress_level=1)
             smooth_results.append(buffer.getvalue())
-        if smooth_results:
+        if smooth_results or smooth_only:
             return smooth_results
         return self._sample_patches(image, source, support, variations, seed, progress, cancelled)
 
@@ -939,12 +969,14 @@ class PhotoCraftBridge:
         finally:
             image.selection = None
             image._snapshot = None
+            image.widened = None
 
     def discard(self, image: PCImage) -> None:
         """A failed or cancelled job: forget results that never reached the document."""
         image.pending, image.pending_group = [], ""
         image.selection = None
         image._snapshot = None
+        image.widened = None
 
 
 def default_profile() -> Path:

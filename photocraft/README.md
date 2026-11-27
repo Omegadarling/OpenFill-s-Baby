@@ -24,6 +24,8 @@ Open **Filter → Plug-ins → OpenFill**, then choose **Select**. Click inside 
 
 Use **Add** to include another object or **Subtract** to take one out. To expand the selection, move the **Grow selection** slider or type **1–500** in the pixel field beside **Grow**. Click **Grow** or press **Enter** in the field. Each press expands the outline by that many document pixels and gives you one Undo step. Both panels remember the last amount you applied, starting at 4 px. Grow also works with a PhotoCraft lasso or marquee, even without ComfyUI. Switch straight to **Edit** or **Remove** to use the selection.
 
+With **With its attached parts** ticked (it is by default), a selection also takes what is attached to the object or held by it: a bin's wheel, a skier's skis, an umbrella in a hand, a kite's string, a dog's leash. Untick it to pick one part on its own. Very fine lines the model cannot follow, such as the painted rigging of a small sailboat, can still be left out; add those by hand. A click that finds no object looks closer around the click and then asks the model what is there before it gives up, and a click a pixel off a thin object (a string, a pen, a cable) still picks it.
+
 **AI setup:** use a ComfyUI build with the built-in [WeVisOne-VL Detect node](https://github.com/Comfy-Org/ComfyUI/pull/17632). Put one of the [Comfy-Org WeVisOne-VL encoders](https://huggingface.co/Comfy-Org/WeVisOne-VL/tree/135355350443103e34089dd39264fe0651691929/text_encoders) in that server's `models/text_encoders` folder. Use the ComfyUI conversion, which includes the mask decoder. The 4B BF16 file is 9.7 GB; 2B and INT8 files are also supported. OpenFill discovers the file by its loader name. These weights are optional and are not part of the OpenFill download.
 
 ## Find or add a ComfyUI server
@@ -46,14 +48,22 @@ An existing `selection-engine.json` adds **Local WeVisOne** to the Select picker
 2. Open **Engine** in PhotoCraft with OpenFill and select your server under **Shared engine**. If it is missing, use **Find servers** or **Add server**. Click **Check** in Edit.
 3. Select the area to edit and choose a model in **Edit**. Use **Select All** to edit the whole image. If a model is missing, check its files and nodes on that server and its visibility in **Manage Models**.
 
+### Automatic Edit
+
+**Automatic** in Edit's Model menu makes two edits with the two models that rated best together for the kind of edit, names the model under each thumbnail, and you keep the better one. Qwen goes first for a new colour, material, pattern or lettering, FIBO Turbo for a new or different object, and an edit of the whole picture uses Qwen and H3. FIBO runs in the mode that suits the edit (Preserve keeps the object's shape and gives it a new look, Replace draws a different one) and in the other mode as a third result. Something added "here" in a box you drew gets FIBO Replace twice and Qwen told where the box is. Automatic is offered where the engine has two of Qwen, FIBO and H3, and it is the choice until you pick a model.
+
+Automatic runs with the settings its edits were rated with (Auto-feather, FIBO's boundary match and context), whatever is saved in the panel, and saves nothing. It also gives the edit room: a tight object selection is grown so that Auto-feather's soft band lies outside the object, and a different object (a scooter for a bicycle) gets the hull of the old one's outline, a little enlarged. Pick a model yourself to use reference images or one model only. Keep and Discard add one line to `edit-choices.jsonl` in the profile with the models offered and the one kept; no pixels or prompts are stored.
+
 ### Remove an object
 
-1. Lasso the whole object, its shadow or reflection, and a narrow margin of background. Leave some unselected background for OpenFill to sample.
+1. Lasso the whole object and a narrow margin of background. Leave some unselected background for OpenFill to sample. With **With its shadow and reflection** ticked (it is by default), the object's own shadow and reflection are found and removed with it; otherwise include them in the selection.
 2. Open **Remove**. Under **Kind of removal**, **Automatic** makes two repairs when the selected engine offers RORem, FLUX 3 Image Klein, Qwen Image Lightning and LaMa, or enough of them to make two: it runs the methods artists rated best for a selection of that size (two RORem variations under 1% of the picture; from 1% up, FLUX 3's repair first with RORem beside it), replaces a repair that left the object in place, and names the method under each result. Without them it uses MiniMax H3 Image when that is available and visible on the engine. Otherwise it samples the colors, edges and texture around the selection and suggests an available **Method**. You can pick a kind of removal or choose a **Method** yourself.
 3. Choose **Variations** (1–5), press **Remove**, then click each result thumbnail to compare it on the canvas. You can also run another method on the same selection to add alternatives.
 4. Choose **Keep** under the result you want, or **Discard** to return to the original.
 
-Remove adds a small, softly blended margin around the selection to clear outlines. The original selection stays available. Include cast shadows in the selection when they should be removed too. Local tries different ways to continue the surrounding light or texture. On a patterned backdrop with similar colors around the lasso, Local limits its texture samples to matching background patches. This helps keep a nearby person or other object out of the repair. If several attempts produce identical visible pixels, the panel shows one copy and tells you how many distinct repairs it found.
+**With its shadow and reflection** asks the selection model for the selected object's own shadow and its reflection, checks each find against the picture, and removes them with the object; the panel says when it took one along. On plain surroundings it also takes the object's own edge and contact shadow just outside the selection, which every method would otherwise leave as a dark line. A shadow that does not touch the object, and a reflection in a mirror beside it, are not found; select those yourself, or untick the box to remove only what you selected. When the engine is not running, the look-up starts it only if the removal needs it anyway, and if the engine is busy the removal goes ahead and the panel says the shadow was not looked for. Like Automatic Edit, Automatic Remove runs with the settings its repairs were rated with. Where the surroundings are plain (a studio backdrop, a wall, a clear sky), it also shows Local's repair as a third choice, because the other methods tend to leave a ghost or a blob there.
+
+Remove adds a small, softly blended margin around the selection to clear outlines. The original selection stays available. Local tries different ways to continue the surrounding light or texture. On a patterned backdrop with similar colors around the lasso, Local limits its texture samples to matching background patches. This helps keep a nearby person or other object out of the repair. If several attempts produce identical visible pixels, the panel shows one copy and tells you how many distinct repairs it found.
 
 | Situation | Method to try | What the comparison showed |
 | --- | --- | --- |
@@ -299,6 +309,9 @@ Local texture synthesis and managed native LaMa work at the crop's own resolutio
 - **Expand** draws the new area in one pass at about 1024 px with every model and scales it up: on a 3000 px canvas the new edges are drawn at about a third of full resolution and look soft. Expand in rounds on big images.
 - **Create** makes images of up to 1024 px on the long side with SDXL (768 px with SD 1.5), in the shape you pick. As a layer in a larger selection it is scaled up to fit.
 - **Variations** of a Remove with LaMa or MAT are all the same, so Remove makes one.
+- **Shadows and reflections** are found by the selection model and can be wrong: a metal rail under a glass table can be taken as an object's reflection, and a shadow that does not touch the object, or a reflection in a mirror beside it, is not found. FLUX 3 and RORem can paint a removed object's outline back on a plain backdrop; Local's repair, shown third there, usually does not.
+- **Attached parts** can include a small patch of the object's own shadow, and very fine lines (painted rigging, power lines) are often left out.
+- **ComfyUI's picture loader** can run out of address space after a few hundred different pictures in one session (ComfyUI 0.46). OpenFill then clears the server's picture cache, keeping models loaded, and repeats the job once.
 
 ## How it works
 

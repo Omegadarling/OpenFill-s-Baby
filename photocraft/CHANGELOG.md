@@ -5,6 +5,40 @@ All notable changes to OpenFill for PhotoCraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+This release adds Automatic Edit, removes an object's shadow and reflection with it, and brings an object's attached parts into a selection. Where it says so, the star ratings come from independent AI raters: they saw the results of 0.27.0 and of an earlier build shuffled together without knowing which was which, two raters per result and a third where they differed by two stars or more, after seeing hand ratings of other results for the same pictures to learn the scale. The other figures are hand ratings or by-eye judgments from before-and-after sheets, as noted.
+
+### Edit
+
+- **Edit has an Automatic choice.** With **Automatic** in the Model menu, Edit makes two edits with the two models that rated best together for that kind of edit and names the model under each thumbnail; keep the better one. Qwen goes first for a new colour, material, pattern or lettering, and FIBO Turbo for a new or different object. An edit of the whole picture uses Qwen and H3, never FIBO. On 24 hand-rated edits, the best single model gave a good result (4 or 5 stars) on 11; the two edits Automatic shows gave one on 17. Automatic is offered where the engine has two of Qwen, FIBO and H3, and it is the choice until you pick a model. Reference images still need a model picked by hand.
+- **FIBO runs in the mode that suits the edit, and in the other mode as a third result.** Preserve keeps the selected thing's shape and gives it a new look; Replace draws a different object, or one added in an empty box. Until now FIBO ran in whatever mode was saved, which was wrong for about half of all edits. AI-rated: Preserve 3.9 stars against 3.0 for Replace on 12 new looks, and Replace 4.0 against 3.0 on 9 different or added objects.
+- **Something added "here" in a box you drew gets two FIBO Replace edits and Qwen told where the box is.** Qwen cannot see the box, so "here" told it nothing and it redrew the spot empty; it is now told "in the middle of the picture" on a crop with little around the box. AI-rated on 11 such adds: a good result on all 11, and two good ones on 8 (1 before). Lettering, an add onto a subject ("on his head") and a look over an area keep the plan they had.
+- **Automatic gives the edit room.** A tight object selection is grown so that Auto-feather's soft band lies outside the object instead of leaving its rim with the old look, and a different object (a scooter for a bicycle) gets the hull of the old one's outline, a little enlarged. By eye, 7 of 8 test edits that had failed for lack of room came out clearly better and 1 the same.
+- AI-rated on 21 edits of a selection: the best of Automatic's results is good on 19, against 13 for the first version of Automatic Edit (mean 4.4 stars against 3.7; 8 better, 13 the same, none worse).
+
+### Remove
+
+- **Remove takes the object's shadow and reflection with it.** With **With its shadow and reflection** ticked (it is by default), OpenFill asks the selection model for the selected object's own shadow and its reflection, checks each find against the picture and removes them with the object. The panel says when it took one along; untick the box to remove only what you selected. On 101 test selections it took something along on 35, rightly on 34, and missed one that was there on 9 (a shadow that does not touch the object, or a reflection in a mirror beside it). By eye, the better repair was good on 3 of those 35 without the shadow and on 29 with it. The step adds 2 to 12 seconds.
+- **Remove takes the object's own edge and contact shadow just outside the selection.** A selection often stops a few pixels inside the object's outline, and every method then left that fringe as a dark line (a thermostat's shaded crescent, a duck's feet on the floor). It is added only on plain surroundings, never more than 40% of the selection, and not on a graded studio backdrop.
+- **Shadows of look-alikes stay with their own objects.** Among similar objects (glasses, bottles), only the shadow nearest the selected one is taken.
+- **Automatic Remove adds Local's repair on plain surroundings** (a studio backdrop, a wall, a clear sky) as a third choice, because the other methods tend to leave a ghost or a blob there.
+- **Every Automatic job runs with the settings its results were rated with**, whatever is saved in the panel (Auto-feather, FIBO's boundary match and context, and the seam and grain corrections for removals). Nothing it chooses is saved.
+- The shadow look-up starts the engine when the removal needs it anyway, and never for the look-up alone. When the engine is off or busy, the removal goes ahead and the panel says the shadow was not looked for. A refused connection is reported as an engine that is not running, and a remote engine gets a few seconds and a second try before it is called not running.
+- AI-rated on the test removals this release changes (32 of 108): the better repair is good on 21 instead of 15 (10 better, 20 the same, 2 worse: a sign whose ghost every method paints back, and a sticker on a dome).
+- Keep and Discard after an Automatic removal also note whether a shadow or reflection was taken along (`removal-choices.jsonl`; no pixels).
+
+### Select
+
+- **Select brings the object's attached parts.** With **With its attached parts** ticked (it is by default), a selection also takes what is attached to the object or held by it, and a string, rope, cable or leash is asked for by name. Of nine test objects whose selection had left a part out (a bin's wheel, a skier's skis and poles, an umbrella in a hand, a kite's string), eight now come back whole; the painted rigging of a watercolour sailboat still does not. Untick the box to pick one part on its own. A looser answer that is only the object again, also at the picture's edge, is not taken for a part.
+- **A click that finds no object looks closer**, at two close-ups around the click and then by asking the model what is at that point. The selection model's matte is cleaned of faint haze and unsure holes, and a click a pixel off a thin object still picks it. On 77 test clicks, 73 now select the object (51 in 0.24.3).
+
+### Engine and panels
+
+- **The engine's picture loader recovers by itself.** ComfyUI 0.46 can run out of address space after a few hundred different pictures in one session, and every new picture then failed until the server was restarted. OpenFill now clears the server's picture cache (models stay loaded) and repeats the job once.
+- The native panel shows a job's notices, and both panels share the Remove and Select options.
+- Known limits: a metal rail under a glass table can be taken as an object's reflection; FLUX 3 and RORem can paint a removed object's outline back on a plain backdrop; a small patch of an object's own shadow can come along as an attached part (2 of 77 test objects).
+
 ## [0.24.3] - 2026-11-25
 
 - **Automatic Remove shows FLUX 3's repair first from 1% of the picture up**, now also on selections over 5%, with RORem beside it. With the edge correction, FLUX 3 rated 3.9 stars on the 46 rated pictures of that size, against 3.2 for RORem, and seam and colour complaints fell from 21 to 4. Replayed on all 54 rated pictures, the better of Automatic's two repairs rated 4.2 stars, and three pictures in four got a 4 or 5. Under 1% both repairs are still RORem variations.

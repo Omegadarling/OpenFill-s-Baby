@@ -8,7 +8,16 @@ TEXTURE_REMOVAL = "photocraft-texture"
 AUTO = "Automatic"
 H3_TIP = "MiniMax H3 Image fills the selected object with nearby background and refines the repair."
 SCENE_PLACEHOLDER = "Manual method"
-SELECTION_HINT = "Include the object and any shadow you want removed. A small edge margin clears outlines."
+SELECTION_HINT = "Select the object. Its shadow and reflection are looked for, and a small edge margin clears outlines."
+# With "With its shadow and reflection" unticked nothing is looked for, so the hint must not promise it.
+SELECTION_HINT_ALONE = (
+    "Select the object, with its shadow and reflection if they should go. A small edge margin clears outlines."
+)
+
+
+def selection_hint(cast):
+    """Remove's hint in both panels; ``cast`` is whether "With its shadow and reflection" is ticked."""
+    return SELECTION_HINT if cast else SELECTION_HINT_ALONE
 
 
 def recommend(features, available, existing_server):

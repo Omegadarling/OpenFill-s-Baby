@@ -14,6 +14,7 @@ from PIL import Image
 
 from . import ui
 from .selection import MAX_GROW_PIXELS, saved_grow_pixels, valid_grow_pixels
+from .whole import OPTION as WHOLE_OPTION
 
 QUICK_GROW_PIXELS = 64
 
@@ -106,6 +107,11 @@ class SelectView(tk.Frame):
         )
         self.ops.pack(anchor="w")
         self.ops.set(self.operation)
+        self.whole = ui.Checkbox(self, WHOLE_OPTION, ui.CW)
+        # Both panels share this choice (web.Api.options). The panel's own file is where older builds kept it.
+        self.whole.set(bar.api.option("selectWhole", bar.prefs.get("selectWhole", True)))
+        self.whole.var.trace_add("write", lambda *_: bar._option_changed("selectWhole", self.whole.get()))
+        self.whole.pack(anchor="w", pady=(4, 0))
         ui.caption(self, "Describe an object (optional)").pack(anchor="w", pady=(10, 3))
         self.entry = tk.Entry(
             self,
@@ -151,6 +157,7 @@ class SelectView(tk.Frame):
         ui.tip(self.canvas, CONTROLS["select.canvas"])
         ui.tip(self.show_mask, CONTROLS["select.overlay"])
         self.ops.set_tips(lambda key: CONTROLS.get(f"select.{key}", ""))
+        ui.tip(self.whole, CONTROLS["select.whole"])
         ui.tip(self.entry, CONTROLS["select.query"])
         for widget in (self.grow_scale, self.grow_entry):
             ui.tip(widget, CONTROLS["select.grow"])
@@ -344,7 +351,8 @@ class SelectView(tk.Frame):
     def submit(self, action, target=None):
         if self.bar.service.busy():
             return
-        params = {"action": action, "key": self.key, "operation": self.operation, "query": self.query.get().strip()}
+        params = {"action": action, "key": self.key, "operation": self.operation, "query": self.query.get().strip(),
+                  "whole": self.whole.get()}
         if action == "grow":
             pixels = self._pixels()
             if pixels is None:

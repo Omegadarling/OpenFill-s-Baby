@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 from openfill import catalog as cat
 from openfill.backend import describe_error
 from openfill.config import normalize_panel_layout, validate_fibo_settings
+from openfill.supervisor import read_json, write_json
 
 from . import __version__, tips
 from .references import MAX_UPLOAD
@@ -51,6 +52,20 @@ EDITABLE = {
     "debug": bool,
 }
 
+# The two checkboxes both panels show, under the names the native panel has always saved them by: Remove's
+# "With its shadow and reflection" and Select's "With its attached parts". Each is on until it is unticked.
+PANEL_OPTIONS = ("removeCast", "selectWhole")
+OPTIONS_FILE = "panel-options.json"  # in the profile, beside selection-settings.json
+NATIVE_FILE = "bar.json"  # the native panel's own file, where they were first kept
+
+
+def _options_path(service) -> Path | None:
+    """The shared options' file in the companion's profile; None when the service has no profile."""
+    try:
+        return Path(getattr(getattr(service, "bridge", None), "profile", None)) / OPTIONS_FILE
+    except TypeError:  # a stand-in service, as the unit tests use: the options then last for the session
+        return None
+
 
 class Api:
     def __init__(self, service: Service) -> None:
@@ -59,9 +74,46 @@ class Api:
         self.on_show = None  # brings the OpenFill bar up (set by the launcher)
         self._pick = {"seq": 0, "action": ""}  # the last Filter menu pick, for the page
         self._preferences_lock = threading.Lock()
+        self._options_path = _options_path(service)
+        self.options = self._saved_options()  # what either panel last chose for PANEL_OPTIONS
 
     def pick(self, action: str) -> None:
         self._pick = {"seq": self._pick["seq"] + 1, "action": action}
+
+    # the options both panels share ----------------------------------------------------
+
+    def _saved_options(self) -> dict[str, bool]:
+        """The choices saved so far. One that only the native panel's own file holds still counts, so a
+        box unticked there before both panels shared it stays unticked in the browser view too."""
+        if self._options_path is None:
+            return {}
+        found: dict[str, bool] = {}
+        for path in (self._options_path.with_name(NATIVE_FILE), self._options_path):  # the shared file wins
+            stored = read_json(path)
+            if isinstance(stored, dict):
+                found.update({name: stored[name] for name in PANEL_OPTIONS if type(stored.get(name)) is bool})
+        return found
+
+    def option(self, name: str, default: bool = True) -> bool:
+        """Whether a shared checkbox is ticked; ``default`` while neither panel has saved it."""
+        return self.options.get(name, default)
+
+    def set_options(self, values: dict[str, Any]) -> dict[str, bool]:
+        """Keep what a panel's checkbox was set to, for both panels and for the next start."""
+        if not isinstance(values, dict) or not values or any(
+            name not in PANEL_OPTIONS or type(value) is not bool for name, value in values.items()
+        ):
+            raise ValueError("Each option must be on or off.")
+        with self._preferences_lock:
+            options = {**self.options, **values}
+            if options != self.options:
+                self.options = options
+                if self._options_path is not None:
+                    try:
+                        write_json(self._options_path, options)
+                    except OSError:
+                        pass  # it still holds for both panels until the companion closes
+        return {name: self.option(name) for name in PANEL_OPTIONS}
 
     # GET ------------------------------------------------------------------------------
 
@@ -84,6 +136,8 @@ class Api:
             "selectionGrowPixels": saved_grow_pixels(
                 getattr(getattr(self.service, "selection", None), "grow_pixels", None)
             ),
+            "removeCast": self.option("removeCast"),
+            "selectWhole": self.option("selectWhole"),
             "activeModel": "" if selecting else app.active_model_id(),
             "comfyReady": ready,
             "comfyProblem": "" if ready else _comfy_problem(app),
@@ -131,9 +185,14 @@ class Api:
             if source_id != app.settings.fibo_source:
                 rows, source_id = [], app.settings.fibo_source
                 scenes = removal_scenes([], True)
+            from . import edit_plan
+
+            editors = {r["id"] for r in rows if r.get("visible", True) and r["installed"] and r["runnable"]
+                       and "fill" in r["capabilities"] and not r["missing_nodes"] and not r["missing_models"]}
             return {
                 "rows": rows,
                 "removalScenes": scenes,
+                "autoEdit": edit_plan.offered(editors),  # the Model menu's Automatic, when its models are here
                 "current": current,
                 "pending": pending,
                 "source": source_id,
@@ -257,6 +316,8 @@ class Api:
             with self._preferences_lock:
                 self._save_preference("panel_layout", layout)
             return layout
+        if path == "/api/options":
+            return self.set_options(body)
         if path == "/api/references":
             name, data = body.get("name"), body.get("data")
             if not isinstance(name, str) or not isinstance(data, str) or len(data) > 4 * ((MAX_UPLOAD + 2) // 3):

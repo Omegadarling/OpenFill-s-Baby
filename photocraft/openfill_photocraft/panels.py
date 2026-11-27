@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw
 from openfill.config import FIBO_CONTEXT_MODES, FIBO_EDIT_MODES, validate_fibo_settings
 
 from . import ui
-from .tips import CONTROLS
+from .tips import CONTROLS, FEATHER_GROWTH
 from .ui import ACCENT, BAD, BG, CW, DIM, LINE, OK, PANEL, TEXT
 
 if TYPE_CHECKING:
@@ -58,6 +58,14 @@ SECTIONS = {
 }
 BUSY = ("Downloading", "Waiting", "Installing", "Removing", "Working")
 DISCLOSURE_SIZE = 12  # Half the previous 24 px disclosure icon.
+
+
+def auto_feather_help(amount: float) -> str:
+    """The line under the Auto-feather slider (the browser view shows the same words)."""
+    return (
+        f"Soften edges over roughly the outer {amount:g}% of the selected area. "
+        f"Larger selections get a wider feather. {FEATHER_GROWTH}"
+    )
 
 
 def field(parent: tk.Misc, label: str, control_factory, gap: int = 6) -> tuple[tk.Frame, Any]:
@@ -983,7 +991,7 @@ class GenerationView(tk.Frame):
         ).pack(fill="x", pady=(8, 0))
         ui.small(
             self.remote_controls,
-            "The PhotoCraft selection controls the visible edit. Auto-feather softens its edges inward without growing the selection.",
+            "The PhotoCraft selection controls the visible edit. Auto-feather softens its edges inward.",
         ).pack(fill="x", pady=(12, 0))
         self.auto_feather = ui.Checkbox(self, "Auto-feather selection")
         self.auto_feather.pack(fill="x", pady=(12, 0))
@@ -1013,10 +1021,7 @@ class GenerationView(tk.Frame):
             relief="flat",
         )
         self.auto_feather_slider.pack(fill="x", pady=(2, 0))
-        self.auto_feather_help = ui.small(
-            self,
-            "Soften edges over roughly the outer 10% of the selected area. Larger selections get a wider feather; the selection does not grow.",
-        )
+        self.auto_feather_help = ui.small(self, auto_feather_help(10))
         self.auto_feather_help.pack(fill="x", pady=(4, 0))
         ui.tip(self.auto_feather, CONTROLS["gen.auto_feather"])
         ui.tip(self.auto_feather_slider, CONTROLS["gen.auto_feather_percent"])
@@ -1191,9 +1196,7 @@ class GenerationView(tk.Frame):
         amount = max(0.0, min(100.0, self.auto_feather_percent.get()))
         self.auto_feather_amount.configure(text=f"{amount:g}%")
         self.auto_feather_slider.configure(state="normal" if self.auto_feather.get() else "disabled")
-        self.auto_feather_help.configure(
-            text=f"Soften edges over roughly the outer {amount:g}% of the selected area. Larger selections get a wider feather; the selection does not grow.",
-        )
+        self.auto_feather_help.configure(text=auto_feather_help(amount))
 
     def load_auto_feather(self, settings) -> None:
         self.auto_feather_percent.set(float(getattr(settings, "auto_feather_percent", 10.0)))

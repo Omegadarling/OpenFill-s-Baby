@@ -44,7 +44,16 @@ SHORT = {
     MOSS_ANYPAINT_ID: "AnyPaint",
     FLUX3_KLEIN_ID: "FLUX 3",
 }
-TIP = "Automatic makes two repairs with the methods that rated best for a selection this size. Keep the better one."
+TIP = (
+    "Automatic makes two repairs with the methods that rated best for a selection this size, and a third with "
+    "Local where the surroundings are plain. Keep the best one."
+)
+
+
+# What every engine removal runs with, whatever is saved. The ratings behind the table were made with the seam
+# and edge correction and the grain match on, and the panels have no switch for either; an installer of 2026-10 had
+# saved both off, so the installed app was removing without them (found 2026-11-25).
+SETTINGS = {"seam_correction": True, "grain_match": True}
 
 
 def short_label(method: str, name: str = "") -> str:

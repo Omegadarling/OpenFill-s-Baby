@@ -80,14 +80,20 @@ class InlinePanelTests(unittest.TestCase):
             }
             for model_id, name in ((self.qwen, self.qwen_name), (self.sdxl, self.sdxl_name))
         ]
-        refresher = Mock()
-        refresher.get.return_value = {
+        self.watcher, self.refresher = watcher, Mock()
+        self.refresher.get.return_value = {
             "comfy_ok": True,
             "models": {"fill": [(r["id"], r["name"]) for r in rows]},
             "rows": rows,
             "active": self.qwen,
             "active_name": self.qwen_name,
         }
+        self.api = Api(service)
+        self.bar = self.make_bar(self.api)
+        self.bar.refresh_model_visibility()
+
+    def make_bar(self, api):
+        """A panel on a withdrawn root, as the companion would open it with ``api``."""
         native_tk = tk.Tk
 
         def hidden_root(*args, **kwargs):
@@ -99,21 +105,28 @@ class InlinePanelTests(unittest.TestCase):
             self.addCleanup(self.close_root, root)
             return root
 
-        self.api = Api(service)
         with (
             patch("tkinter.Tk", side_effect=hidden_root),
-            patch("openfill_photocraft.bar.Refresher", return_value=refresher),
+            patch("openfill_photocraft.bar.Refresher", return_value=self.refresher),
             patch("openfill_photocraft.tether.Tether"),
             patch("openfill_photocraft.ui.make_borderless", return_value=False),
             patch.object(Bar, "_tick", lambda self: None),
             patch.object(Bar, "_drain", lambda self: None),
             patch.object(Bar, "_place", lambda self: self.root.withdraw()),
         ):
-            self.bar = Bar(service, watcher, "http://127.0.0.1/test", self.profile, api=self.api)
-        self.bar.refresh_model_visibility()
+            return Bar(self.service, self.watcher, "http://127.0.0.1/test", self.profile, api=api)
+
+    def restart(self, api):
+        """Close this panel and open it again: one Tk interpreter at a time, as ui's image cache expects."""
+        self.close_root(self.bar.root)
+        self.bar = self.make_bar(api)
+        return self.bar
 
     @staticmethod
     def close_root(root):
+        if getattr(root, "closed", False):
+            return
+        root.closed = True
         root.update_idletasks()
         for callback in root.tk.splitlist(root.tk.call("after", "info")):
             root.after_cancel(callback)
@@ -125,7 +138,7 @@ class InlinePanelTests(unittest.TestCase):
         """Free the bar and its root here, on the main thread. A Tk interpreter that the garbage
         collector frees on another thread (a later test's server) aborts the whole run with
         "Tcl_AsyncDelete: async handler deleted by the wrong thread"."""
-        for name in ("bar", "api", "service"):  # the mocks keep the bar's callbacks
+        for name in ("bar", "api", "service", "watcher", "refresher"):  # the mocks keep the bar's callbacks
             vars(self).pop(name, None)
         gc.collect()
 
@@ -180,6 +193,75 @@ class InlinePanelTests(unittest.TestCase):
         for key in ("engine", "generation"):
             self.assertEqual(ui.tip_of(bar.sections.toggles[key]), tips.CONTROLS["section"])
 
+    def test_the_native_panel_offers_the_shadow_and_parts_options_ticked(self):
+        bar = self.bar
+        bar.tab.set("remove")
+        bar._layout_main()
+        self.assertIn(bar.remove_cast, bar._shown["parts"])       # under Method, in Remove only
+        self.assertTrue(bar.remove_cast.winfo_manager())
+        self.assertTrue(bar.remove_cast.get())
+        bar.remove_cast.set(False)
+        self.assertIs(bar.prefs["removeCast"], False)
+        bar.tab.set("fill")
+        bar._layout_main()
+        self.assertNotIn(bar.remove_cast, bar._shown["parts"])
+        self.assertFalse(bar.remove_cast.winfo_manager())
+        view = bar.select_view_panel
+        self.assertTrue(view.whole.get())
+        view.whole.set(False)
+        self.assertIs(bar.prefs["selectWhole"], False)
+        row = bar.remove_cast
+        row.update_idletasks()
+        self.assertLessEqual(row.winfo_reqwidth(), ui.CW)         # the label fits the panel's width
+
+    def test_both_panels_share_the_shadow_and_parts_choices(self):
+        bar, view = self.bar, self.bar.select_view_panel
+        bar.remove_cast.set(False)
+        view.whole.set(False)
+        self.assertEqual((self.api.option("removeCast"), self.api.option("selectWhole")), (False, False))
+        self.api.post("/api/options", {"removeCast": True, "selectWhole": True})  # ticked again in the browser view
+        bar._update()
+        self.assertEqual((bar.remove_cast.get(), view.whole.get()), (True, True))
+        self.assertEqual((bar.prefs["removeCast"], bar.prefs["selectWhole"]), (True, True))
+        self.api.post("/api/options", {"selectWhole": False})
+        bar._update()
+        self.assertEqual((bar.remove_cast.get(), view.whole.get()), (True, False))
+
+    def test_a_restart_keeps_what_either_panel_chose(self):
+        from openfill_photocraft.removal_advice import SELECTION_HINT_ALONE
+
+        self.service.bridge.profile = self.profile
+        Api(self.service).set_options({"removeCast": False, "selectWhole": False})  # unticked in the browser view
+        bar = self.restart(Api(self.service))  # the next start
+        self.assertEqual((bar.remove_cast.get(), bar.select_view_panel.whole.get()), (False, False))
+        self.assertEqual(bar.remove_line.cget("text"), SELECTION_HINT_ALONE)
+
+    def test_what_this_panel_saved_before_both_shared_it_holds_in_both(self):
+        import json
+
+        self.service.bridge.profile = self.profile
+        (self.profile / "bar.json").write_text(json.dumps({"removeCast": False, "variations": 2}), encoding="utf-8")
+        api = Api(self.service)
+        bar = self.restart(api)
+        self.assertEqual((bar.remove_cast.get(), bar.select_view_panel.whole.get()), (False, True))
+        self.assertEqual((api.option("removeCast"), api.option("selectWhole")), (False, True))  # the browser view's
+
+    def test_removes_hint_promises_the_shadow_look_up_only_while_the_box_is_ticked(self):
+        from openfill_photocraft.removal_advice import SELECTION_HINT, SELECTION_HINT_ALONE
+
+        bar = self.bar
+        bar.tab.set("remove")
+        bar.remove_scene = ""  # Manual method: the line shows the hint itself
+        bar._fill_models()
+        self.assertEqual(bar.remove_line.cget("text"), SELECTION_HINT)
+        bar.remove_cast.set(False)
+        bar._fill_models()
+        self.assertEqual(bar.remove_line.cget("text"), SELECTION_HINT_ALONE)
+        self.assertNotIn("looked for", SELECTION_HINT_ALONE)
+        bar.remove_cast.set(True)
+        bar._fill_models()
+        self.assertEqual(bar.remove_line.cget("text"), SELECTION_HINT)
+
     def test_grow_number_and_slider_fit_at_the_native_panel_width(self):
         view = self.bar.select_view_panel
         row = view.grow.master
@@ -202,7 +284,8 @@ class InlinePanelTests(unittest.TestCase):
         view._operation("add")
         view._click(SimpleNamespace(x=left + width // 2, y=top + height // 4))
         self.service.start.assert_called_once_with(
-            "select", {"key": "canvas", "action": "click", "query": "", "operation": "add", "point": [0.5, 0.25]}
+            "select",
+            {"key": "canvas", "action": "click", "query": "", "operation": "add", "whole": True, "point": [0.5, 0.25]},
         )
         bar.tab_buttons["remove"].invoke()
         self.assertFalse(view.winfo_manager())
@@ -271,6 +354,38 @@ class InlinePanelTests(unittest.TestCase):
         bar.refresh_model_visibility()
         self.assertEqual(bar.model_box.values, [self.qwen_name])
         self.assertFalse(bar.go.disabled)
+
+    def test_edit_offers_automatic_first_until_a_model_is_picked(self):
+        from openfill_photocraft.edit_plan import AUTO_EDIT
+
+        from openfill.remote_models import QWEN21_LIGHTNING_ID, TURBO_ID
+
+        bar = self.bar
+        self.assertNotIn("Automatic", bar.model_box.values)  # this engine's two models are not Automatic's
+        names = {QWEN21_LIGHTNING_ID: "Qwen Lightning · Local ComfyUI", TURBO_ID: "FIBO Edit Turbo · Local ComfyUI"}
+        rows = [{"id": model_id, "name": name, "runnable": True, "installed": True, "active": model_id == QWEN21_LIGHTNING_ID,
+                 "partial": [], "remote": True, "max_references": 15 if model_id == QWEN21_LIGHTNING_ID else 0,
+                 "reference_syntax": ""} for model_id, name in names.items()]
+        bar.refresher.get.return_value = {"comfy_ok": True, "models": {"fill": list(names.items())}, "rows": rows,
+                                          "active": QWEN21_LIGHTNING_ID, "active_name": names[QWEN21_LIGHTNING_ID]}
+        bar.model_choice.set("")
+        bar._fill_models()
+        self.assertEqual(bar.model_box.values, ["Automatic", *names.values()])
+        self.assertEqual((bar.model_box.get(), bar._model()), ("Automatic", AUTO_EDIT))
+        self.assertEqual(bar._reference_options(bar.refresher.get()), (0, ""))
+        self.assertIn("two edits", bar.model_box.item_tip("Automatic"))
+        bar.prompt.set("Make the sofa mustard yellow.")
+        bar.generate()
+        kind, body = self.service.start.call_args.args
+        self.assertEqual((kind, body["model"]), ("fill", AUTO_EDIT))
+        self.assertNotIn("useReferences", body)
+        bar._model_picked(names[TURBO_ID])
+        self.assertEqual((bar._model(), bar.prefs["editModel"]), (TURBO_ID, ""))
+        bar.model_choice.set("")
+        bar._fill_models()
+        self.assertEqual(bar._model(), QWEN21_LIGHTNING_ID)  # the active model: a picked model ended Automatic
+        bar._model_picked("Automatic")
+        self.assertEqual((bar._model(), bar.prefs["editModel"]), (AUTO_EDIT, "Automatic"))
 
     def test_kind_of_removal_fits_the_platform_font_and_remains_aligned(self):
         self.bar.tab_buttons["remove"].invoke()

@@ -162,6 +162,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
       <button id="select-overlay" class="btn" data-tip="select.overlay" hidden>Show selection overlay</button>
       <div class="seg s12" id="select-ops" role="group" aria-label="Combine selection"><button data-op="replace" class="on" data-tip="select.replace">Replace</button><button data-op="add" data-tip="select.add">Add</button><button data-op="subtract" data-tip="select.subtract">Subtract</button></div>
+      <label class="check" data-tip="select.whole"><input type="checkbox" id="select-whole" checked><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>With its attached parts</span></label>
       <label class="field" data-tip="select.query"><span class="label">Describe an object (optional)</span><input id="select-query" type="text" maxlength="500" placeholder="e.g. the cup on the left"></label>
       <div class="row grow-row">
         <label for="select-px" data-tip="select.grow">Grow selection</label>
@@ -171,7 +172,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
     </div>
     <div class="row" id="remove-scene-row" hidden><label for="remove-scene" data-tip="remove.kind">Kind of removal</label><div class="select"><select id="remove-scene"><option value="auto">Automatic</option></select></div></div>
-    <div class="small" id="remove-text" hidden>Select the object and its shadow. Remove includes a small edge margin to clear outlines.</div>
+    <div class="small" id="remove-text" hidden>Select the object. Its shadow and reflection are looked for, and a small edge margin clears outlines.</div>
+    <label class="check" id="remove-cast-row" data-tip="remove.cast" hidden><input type="checkbox" id="remove-cast" checked><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>With its shadow and reflection</span></label>
     <div class="stack" id="expand-box" hidden>
       <div class="seg s12 fit" id="presets" role="group" aria-label="Size" data-tip="expand.ratio"></div>
       <div class="grid4" data-tip="expand.margin">
@@ -279,7 +281,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div class="small" data-legacy-generation>Steps: more is slower and finer. Strictness: how closely the prompt is followed. Margin: how far past the selection the fill may repaint, as a share of its size.</div>
       <label class="check" data-tip="gen.auto_feather"><input type="checkbox" id="s-auto_feather" checked><span class="box"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Auto-feather selection</span></label>
       <div class="field" data-tip="gen.auto_feather_percent"><label class="label" for="s-auto_feather_percent">Feather area <output id="auto-feather-value" for="s-auto_feather_percent">10%</output></label><input id="s-auto_feather_percent" type="range" min="0" max="100" step="1" value="10" aria-describedby="auto-feather-help"></div>
-      <div class="small" id="auto-feather-help">Soften edges over roughly the outer 10% of the selected area. Larger selections get a wider feather; the selection does not grow.</div>
+      <div class="small" id="auto-feather-help">Soften edges over roughly the outer 10% of the selected area. Larger selections get a wider feather. With a model picked by hand the selection does not grow. Automatic grows it first, so the soft edge lies outside the object.</div>
       <div class="stack" id="fibo-edit-settings" style="gap:12px" hidden>
         <div class="divider"></div>
         <div class="field" data-tip="gen.fibo_edit_mode"><label class="label" for="s-fibo_edit_mode">FIBO editing</label><select id="s-fibo_edit_mode" aria-describedby="fibo-mode-help"><option value="preserve" data-tip="gen.fibo_edit_mode.preserve">Preserve structure</option><option value="replace" data-tip="gen.fibo_edit_mode.replace">Replace selected content</option></select></div>
@@ -462,7 +464,7 @@ async function submitSelection(action,target){
   if(action==="grow"&&(!sel||pixels===null))return;
   submittingSelection=true;selectButtons();
   try{
-    const params={action,key,operation:combine,query:$("select-query").value.trim()};
+    const params={action,key,operation:combine,query:$("select-query").value.trim(),whole:$("select-whole").checked};
     if(action==="grow")params.pixels=pixels;
     if(action==="click")params.point=target;
     if(action==="box")params.box=target;
@@ -499,12 +501,33 @@ async function selectPreview(showMask=false){
   }catch(e){retryPreview=Date.now()+2000;if(mode==="select"&&key===pc.documentKey)say(e.message,"bad")}
   finally{fetchingKey="";overlay.disabled=busy||selectKey!==pc.documentKey;selectButtons()}
 }
+// The two options both panels share (web.py PANEL_OPTIONS): a box shows what is saved, and a change is saved at once.
+const OPTION_BOXES={removeCast:"remove-cast",selectWhole:"select-whole"};
+let optionSaves=0, optionsSavedAt=0;  // changes on their way, and the last state request that may predate one
+function optionShown(name){if(name==="removeCast"&&mode==="remove")fillSelect()}  // Remove's hint follows its box
+function syncSavedOptions(state,seq){
+  if(optionSaves||seq<=optionsSavedAt)return;  // this reply may be older than a change made here
+  for(const [name,id] of Object.entries(OPTION_BOXES)){
+    const saved=state[name];
+    if(typeof saved==="boolean"&&$(id).checked!==saved){$(id).checked=saved;optionShown(name)}
+  }
+}
+for(const [name,id] of Object.entries(OPTION_BOXES))$(id).onchange=async()=>{
+  optionShown(name);optionSaves++;
+  try{await post("/api/options",{[name]:$(id).checked})}catch(e){say(e.message,"bad")}
+  finally{optionSaves--;optionsSavedAt=stateSequence}
+};
 $("vars").onclick=e=>{const b=e.target.closest("button");if(b){segPick($("vars"),b);variations=+b.textContent}};
 $("sizes").onclick=e=>{const b=e.target.closest("button");if(b){segPick($("sizes"),b);size=[+b.dataset.w,+b.dataset.h];$("size-px").textContent=`${size[0]} x ${size[1]} px`}};
 $("targets").onclick=e=>{const b=e.target.closest("button");if(b){segPick($("targets"),b);target=b.dataset.target}};
 const TEXTURE_REMOVAL = "photocraft-texture";
 const H3_IMAGE_ID = "remote-minimax-h3-image";
-const selectionHint = $("remove-text").textContent;
+const AUTO_EDIT = "openfill-auto-edit";  // Edit's Automatic (openfill_photocraft/edit_plan.py)
+let autoEdit = false, editAuto = true;   // the engine can run it; it is the choice until a model is picked
+// Remove's hint promises the shadow look-up only while "With its shadow and reflection" is ticked (removal_advice.selection_hint).
+const HINT_CAST = $("remove-text").textContent;
+const HINT_ALONE = "Select the object, with its shadow and reflection if they should go. A small edge margin clears outlines.";
+const selectionHint = () => $("remove-cast").checked ? HINT_CAST : HINT_ALONE;
 let removalScenes = [], selectedScene = "auto", advice = null, advicePending = "", pendingVariations = false;
 let inventoryReady = false, quickRemove = "";
 function adviceContext(){
@@ -555,7 +578,7 @@ function showRemovalGuide(opts) {
   if (scene && scene.method && (scene.method !== removal || !opts.some(o => o[1] === scene.method))) scene = null;
   selectedScene = scene ? scene.scene : "";
   box.value = selectedScene;
-  $("remove-text").textContent = scene ? scene.tip : selectionHint;
+  $("remove-text").textContent = scene ? scene.tip : selectionHint();
 }
 $("remove-scene").onchange = () => {
   quickRemove = "";
@@ -573,7 +596,7 @@ function setMode(m){if(remoteFibo&&["expand","txt2img"].includes(m))m="fill";con
   for(const id of ["references","generation"])document.querySelector(`[data-panel="${id}"]`).hidden=selecting;
   if(m!=="remove")quickRemove="";
   const label=m==="remove"?"Method":"Model";$("model").closest(".row").querySelector("label").textContent=label;$("model").setAttribute("aria-label",label);
-  $("remove-scene-row").hidden=m!=="remove";$("remove-text").hidden=m!=="remove";$("expand-box").hidden=m!=="expand";$("create-box").hidden=m!=="txt2img";$("prompt").hidden=m==="remove"||selecting;
+  $("remove-scene-row").hidden=m!=="remove";$("remove-text").hidden=m!=="remove";$("remove-cast-row").hidden=m!=="remove";$("expand-box").hidden=m!=="expand";$("create-box").hidden=m!=="txt2img";$("prompt").hidden=m==="remove"||selecting;
   tipSelects();$("advanced").hidden=remoteFibo||m!=="fill";$("prompt").placeholder=remoteFibo?"Qwen and FIBO: describe the change. SDXL and MOSS AnyPaint: describe what should appear in the selection. Select All to edit the whole image.":PH[m]||"";$("go").textContent=GO[m];fillSelect();context();if(m==="expand")presets();if(selecting)selectPreview()}
 const sections = new Map([...document.querySelectorAll("[data-panel]")].map(el => [el.dataset.panel, el]));
 let layout = {order: [...sections.keys()], collapsed: ["models", "engine", "generation"]};
@@ -805,6 +828,7 @@ $("model").onchange=async()=>{const v=$("model").value;
   if(v==="__manage"){delete $("model").dataset.key;fillSelect();openSection("models");return}
   drawReferences();
   if(mode==="remove"){quickRemove="";removal=v;selectedScene="";fillSelect();return}
+  if(mode==="fill")editAuto=v===AUTO_EDIT;  // a picked model ends Automatic
   if(v&&v!==activeId&&usable().some(r=>r.id===v&&(r.capabilities||[]).includes(mode))){try{await post("/api/models/activate",{id:v,mode,source:backendSource});activeId=v}catch(e){say(e.message,"bad")}}};
 function seedOf(){const v=$("seed").value.trim();return v===""?-1:parseInt(v)}
 function say(t,kind){note=t?{text:t,kind:kind||"bad",base:baseContext()[0]}:null;context()}
@@ -846,7 +870,7 @@ $("go").onclick=()=>{if(mode==="select"){submitSelection("describe");return}if(b
   if(mode==="fill"||mode==="remove"){if(!sel){say(mode==="remove"?REMOVE_SELECTION:NO_SEL,"bad");return}
     const b={prompt:mode==="remove"?"":prompt,negative:mode==="fill"?$("neg").value:"",variations,strength:remoteFibo?undefined:(mode==="fill"?+$("strength").value:1),seed:mode==="fill"?seedOf():-1,remove:mode==="remove",engineSource:backendSource};
     if(mode==="remove"){if(selectedScene==="auto"&&autoWaiting())return;
-      b.removal=selectedScene==="auto"?advice.method:model;b.model="active";
+      b.removal=selectedScene==="auto"?advice.method:model;b.model="active";b.cast=$("remove-cast").checked;
       if(selectedScene==="auto"){b.adviceKey=advice.key;b.adviceSource=advice.source}
     }else{b.model=model;b.useReferences=referenceLimit()>0&&referenceRows.length>0}
     start("fill",b)}
@@ -896,8 +920,10 @@ function fillSelect(){const s=$("model");let opts;
   if(mode==="remove"){opts=removalChoices();showRemovalGuide(opts)}
   else{const inst=usable();opts=inst.filter(r=>(r.capabilities||[]).includes(mode)).map(r=>[r.name,r.id]);
     // Fill also offers the removal models: with an empty prompt they remove (LaMa and MAT ignore a prompt, erasers use their own)
-    if(mode==="fill"&&!remoteFibo)inst.filter(r=>(r.capabilities||[]).includes("remove")&&!(r.capabilities||[]).includes("fill")).forEach(r=>opts.push([r.name,r.id]))}
-  const want=mode==="remove"?(opts.some(o=>o[1]===removal)?removal:(opts[0]||[])[1]):(opts.some(o=>o[1]===activeId)?activeId:(opts[0]||[])[1]);
+    if(mode==="fill"&&!remoteFibo)inst.filter(r=>(r.capabilities||[]).includes("remove")&&!(r.capabilities||[]).includes("fill")).forEach(r=>opts.push([r.name,r.id]));
+    if(mode==="fill"&&autoEdit)opts.unshift(["Automatic",AUTO_EDIT])}
+  const auto=mode==="fill"&&autoEdit&&editAuto;
+  const want=mode==="remove"?(opts.some(o=>o[1]===removal)?removal:(opts[0]||[])[1]):auto?AUTO_EDIT:(opts.some(o=>o[1]===activeId)?activeId:(opts[0]||[])[1]);
   const waiting=autoWaiting(), key=JSON.stringify([opts,want,waiting]);$("go").disabled=busy||!opts.length||waiting;if(s.dataset.key===key)return;s.dataset.key=key;
   s.innerHTML="";if(!opts.length){const o=document.createElement("option");o.value="";o.textContent=models.some(r=>r.installed&&r.runnable)?"No visible models":models.length||!comfy?"No models installed":"Checking...";s.appendChild(o)}
   for(const[label,value]of opts){const o=document.createElement("option");o.value=value;o.textContent=label;s.appendChild(o)}
@@ -1055,6 +1081,7 @@ async function tick(){
   if(mode!==requested||seq<lastState)return;
   lastState=seq;
   syncSavedGrow(s.selectionGrowPixels);
+  syncSavedOptions(s,seq);
   if(!routingBusy)syncRoutes(s.engineRouting,s.busy);
   $("shared-engine").hidden=Boolean(routing?.enabled);
   $("fibo-source").disabled=s.busy;
@@ -1108,7 +1135,7 @@ function detail(r){if(r.template==="h3_image_edit")return "Six steps · instruct
   if(!caps.length||r.runnable===false)what=r.neededBy||"Needed by other models";return[what,r.size].filter(Boolean).join(" · ")}
 function mnote(t,kind){const n=$("mnote");n.hidden=!t;n.textContent=t||"";n.className="note "+(kind||"bad")}
 async function act(fn){try{await fn();mnote("")}catch(e){mnote(e.message,"bad")}loadModels()}
-async function loadModels(){const requested=mode;let m;try{m=await get("/api/models?mode="+requested)}catch(e){return}if(mode!==requested||(m.source||"")!==backendSource)return;inventoryReady=true;models=m.rows||[];removalScenes=m.removalScenes||[];modelTips=m.tips||{};$("hw").textContent=m.hardware||m.error||"";
+async function loadModels(){const requested=mode;let m;try{m=await get("/api/models?mode="+requested)}catch(e){return}if(mode!==requested||(m.source||"")!==backendSource)return;inventoryReady=true;models=m.rows||[];removalScenes=m.removalScenes||[];autoEdit=!!m.autoEdit;modelTips=m.tips||{};$("hw").textContent=m.hardware||m.error||"";
   fillSelect();tipSelects();if(layout.collapsed.includes("models"))return;
   const inst=models.filter(r=>r.installed).sort((a,b)=>(!a.runnable)-(!b.runnable)||(!a.active)-(!b.active)||a.name.localeCompare(b.name));
   const avail=models.filter(r=>!r.installed&&r.runnable).sort((a,b)=>a.name.localeCompare(b.name));
@@ -1126,7 +1153,7 @@ async function loadModels(){const requested=mode;let m;try{m=await get("/api/mod
   document.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{const r=models.find(x=>x.id===b.dataset.remove);if(confirm(`Uninstall ${short(r.name)}? Its files (${r.size}) are deleted. Files other models use are kept.`))act(()=>post("/api/models/remove",{id:r.id}))})}
 $("save-token").onclick=async()=>{try{await post("/api/models/token",{token:$("token").value});$("token").value="";mnote("Hugging Face key saved.","ok")}catch(e){mnote(e.message,"bad")}};
 
-function syncAutoFeather(){const amount=+$("s-auto_feather_percent").value;$("auto-feather-value").textContent=amount+"%";$("s-auto_feather_percent").disabled=!$("s-auto_feather").checked;$("auto-feather-help").textContent=`Soften edges over roughly the outer ${amount}% of the selected area. Larger selections get a wider feather; the selection does not grow.`}
+function syncAutoFeather(){const amount=+$("s-auto_feather_percent").value;$("auto-feather-value").textContent=amount+"%";$("s-auto_feather_percent").disabled=!$("s-auto_feather").checked;$("auto-feather-help").textContent=`Soften edges over roughly the outer ${amount}% of the selected area. Larger selections get a wider feather. With a model picked by hand the selection does not grow. Automatic grows it first, so the soft edge lies outside the object.`}
 $("s-auto_feather").onchange=syncAutoFeather;$("s-auto_feather_percent").oninput=syncAutoFeather;
 function syncFiboOptions(){const full=$("s-fibo_context_mode").value==="full",amount=+$("s-fibo_context_percent").value;$("fibo-mode-help").textContent=$("s-fibo_edit_mode").value==="preserve"?"Starts from the original pixels and limits regeneration to the selection, retaining more of the existing structure. Some details may still change.":"Rebuild the selected content using its surroundings. Original details inside may be replaced.";$("s-fibo_context_percent").disabled=full;$("fibo-context-value").textContent=amount+"%";$("fibo-context-help").textContent=full?"Use the full image as context. Small selections may lose fine detail at the model's working resolution.":`Include a margin on each side equal to ${amount}% of the selection's larger dimension. The editable area stays the same.`;$("s-fibo_boundary_strength").disabled=!$("s-fibo_boundary_match").checked;$("fibo-boundary-value").textContent=$("s-fibo_boundary_strength").value+"%"}
 $("s-fibo_edit_mode").onchange=syncFiboOptions;$("s-fibo_context_mode").onchange=syncFiboOptions;$("s-fibo_context_percent").oninput=syncFiboOptions;$("s-fibo_boundary_match").onchange=syncFiboOptions;$("s-fibo_boundary_strength").oninput=syncFiboOptions;

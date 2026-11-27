@@ -27,6 +27,7 @@ from openfill.remote_models import (
     TURBO_ID,
 )
 
+from .edit_plan import AUTO_EDIT
 from .removal_advice import AUTO, SCENE_PLACEHOLDER, TEXTURE_REMOVAL
 from .removal_plan import AUTO_REMOVAL
 
@@ -72,7 +73,8 @@ METHODS = {
     TEXTURE_REMOVAL: _LOCAL,
     AUTO_REMOVAL: _tip(
         "Automatic: makes two repairs with the methods that rated best for a selection this size, and you keep "
-        "the better one.",
+        "the better one. Where the surroundings are plain (a studio backdrop, a wall, a clear sky), Local's repair "
+        "is shown as a third.",
         "the better of two rated 4.2 stars (a 4 or 5 on three pictures in four), against 3.3 for RORem alone; a "
         "repair that leaves the object is replaced by the next method.",
         "takes longer than one method: about 35 s once a selection covers 1% of the picture and about a minute over "
@@ -83,6 +85,18 @@ METHODS = {
 # ---- models --------------------------------------------------------------------------------
 
 MODELS = {
+    AUTO_EDIT: _tip(
+        "Automatic: makes two edits with the models that rated best together for this kind of edit, and you keep "
+        "the better one. Qwen goes first for a new colour, material or lettering, FIBO Turbo for a new or different "
+        "object; an edit of the whole picture uses Qwen and H3. FIBO runs in the mode that suits the edit (Preserve "
+        "keeps the object's shape, Replace draws a new one) and in the other as a third result, with the settings "
+        "the edits were rated with. Something added \"here\" in a box you drew gets FIBO Replace twice and Qwen told "
+        "where the box is; words to be written reach Qwen as you typed them.",
+        "on 24 rated edits the better of the two was good (4 or 5 stars) on 17, against 11 for the best single "
+        "model; you do not have to know which model or setting suits the edit.",
+        "takes the models' time, and a third result to compare; reference images need a model picked by hand; "
+        "needs two of Qwen, FIBO and H3 on the engine.",
+    ),
     ROREM_ID: _ROREM,
     "rorem-sdxl": _ROREM,
     LAMA_ID: _LAMA,
@@ -204,7 +218,7 @@ def model_tip(model_id: str, rows: Any = ()) -> str:
 
 def model_tips(rows: Any) -> dict[str, str]:
     """Every tip the browser view needs for the models and methods it can list."""
-    out = {key: model_tip(key, rows) for key in ("default", *METHODS)}
+    out = {key: model_tip(key, rows) for key in ("default", *METHODS, AUTO_EDIT)}
     out.update({row["id"]: tip for row in rows if (tip := model_tip(row["id"], rows))})
     return out
 
@@ -222,6 +236,14 @@ def scene_tip(label: str, scene: dict | None = None, method: str = "") -> str:
 
 
 # ---- controls ------------------------------------------------------------------------------
+
+# Auto-feather softens inward, so a model picked by hand works inside the selection as it is. Automatic first
+# grows the selection until that soft band lies outside the object (edit_plan.roomy). Both panels say so under
+# the slider too, in these words.
+FEATHER_GROWTH = (
+    "With a model picked by hand the selection does not grow. "
+    "Automatic grows it first, so the soft edge lies outside the object."
+)
 
 CONTROLS = {
     # header and sections
@@ -251,6 +273,8 @@ CONTROLS = {
     "select.replace": "Replace: the next pick becomes the selection.",
     "select.add": "Add: the next pick is added to the selection, for an object plus its shadow.",
     "select.subtract": "Subtract: the next pick is cut out of the selection.",
+    "select.whole": "Also select what is attached to the object or held by it: a bin's wheel, a skier's skis, a "
+                    "kite's string. Untick to pick one part on its own.",
     "select.query": "Describe the object in a few words, such as 'the cup on the left', then press Enter. "
                     "Use it when a click picks the wrong thing.",
     "select.grow": "How many pixels Grow widens the selection by. A wider selection clears outlines and shadows, "
@@ -261,7 +285,9 @@ CONTROLS = {
     "remove.kind": "How Remove chooses its method: Automatic, your own choice, or a kind of scene that picks a "
                    "method known to suit it.",
     "method": "The removal method. Picking one here switches Kind of removal to Manual method.",
-    "go.remove": "Remove the selected object. Include its shadow, and leave some background around it.",
+    "remove.cast": "Also remove the object's own shadow and reflection, and the shaded edge the selection stops short "
+                   "of. OpenFill finds them for a selected object; untick to remove only what you selected.",
+    "go.remove": "Remove the selected object. Leave some background around it.",
     # edit
     "prompt": "What to make. Enter runs it, Shift+Enter adds a line, Up and Down recall earlier prompts.",
     "variations": "How many results to make. Each is a layer; you pick one afterwards. More take longer.",
@@ -335,7 +361,7 @@ CONTROLS = {
     "gen.feather_percent": "Edge softness: how softly the new layer fades into the picture, as a share of the "
                            "selection's size.",
     "gen.auto_feather": "Soften the selection's edge inward before an edit, so the result blends without a seam. "
-                        "The selection does not grow.",
+                        + FEATHER_GROWTH,
     "gen.auto_feather_percent": "How much of the selected area the soft edge covers. Higher blends more and keeps "
                                 "less of the edit near the edge.",
     "gen.fibo_edit_mode": "How FIBO treats the selection.",
