@@ -5,7 +5,7 @@ All notable changes to OpenFill for PhotoCraft are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.27.0] - 2026-11-26
 
 This release adds Automatic Edit, removes an object's shadow and reflection with it, and brings an object's attached parts into a selection. Where it says so, the star ratings come from independent AI raters: they saw the results of 0.27.0 and of an earlier build shuffled together without knowing which was which, two raters per result and a third where they differed by two stars or more, after seeing hand ratings of other results for the same pictures to learn the scale. The other figures are hand ratings or by-eye judgments from before-and-after sheets, as noted.
 
